@@ -1,0 +1,17 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Personal data (Not for GitHub)
+data/
+local_data/
+
+# Ignore YAML and CSV by default (except for sample/ and lib/)
+*.yaml
+*.yml
+*.csv
+!sample/
+!lib/

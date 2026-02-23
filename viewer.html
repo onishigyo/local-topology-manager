@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Local Topology Viewer v1.0</title>
+    <script src="./lib/js-yaml.min.js"></script>
+    <script src="./lib/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    </script>
+    <style>
+        :root {
+            --primary: #3b82f6; --primary-hover: #2563eb;
+            --bg-color: #f3f4f6; --card-bg: #ffffff;
+            --text-main: #1e293b; --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --header-height: 60px;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; overflow: hidden; }
+        
+        .header { background-color: #1e293b; color: white; height: var(--header-height); padding: 0 20px; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 200; box-sizing: border-box; }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        .btn-hamburger { background: transparent; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 5px; border-radius: 4px; transition: 0.2s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; }
+        .btn-hamburger:hover { background: rgba(255,255,255,0.1); }
+        .header h1 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
+        
+        #dataStatus { font-size: 0.9rem; font-weight: bold; padding: 4px 10px; border-radius: 4px; background: rgba(255,255,255,0.1); color: #cbd5e1; }
+        #dataStatus.loaded { color: #10b981; background: rgba(16, 185, 129, 0.2); }
+
+        #main-container { width: 100vw; height: calc(100vh - var(--header-height)); position: relative; background: var(--bg-color); }
+        
+        #mermaid-container { width: 100%; height: 100%; position: relative; cursor: grab; user-select: none; }
+        #mermaid-container.is-dragging { cursor: grabbing; }
+        #svg-wrapper { position: absolute; transform-origin: 0 0; will-change: transform; width: 100%; height: 100%; }
+        #svg-wrapper svg { max-width: none !important; width: auto !important; height: auto !important; }
+
+        #settings-sidebar {
+            position: absolute; top: 0; left: 0; width: 380px; height: 100%;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+            box-shadow: 4px 0 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100; display: flex; flex-direction: column; border-right: 1px solid var(--border-color);
+            transform: translateX(0); 
+        }
+        #settings-sidebar.closed { transform: translateX(-100%); box-shadow: none; }
+        .sidebar-content { padding: 25px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 25px; }
+
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        .control-label { font-weight: bold; font-size: 0.95rem; color: var(--text-main); }
+        .help-text { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+        
+        input[type="file"] { padding: 8px; border: 1px dashed #cbd5e1; border-radius: 4px; background: #f8fafc; cursor: pointer; width: 100%; box-sizing: border-box;}
+        input[type="number"], select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; width: auto; }
+        input[type="number"] { min-width: 80px; width: 80px; }
+        input[type="number"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        input:disabled, select:disabled { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border-color: #e2e8f0; }
+        
+        .btn { padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; font-size: 1rem; text-align: center; width: 100%; box-sizing: border-box; margin-top: auto;}
+        .btn-primary { background: var(--primary); box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3); } 
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 10px rgba(59, 130, 246, 0.4); }
+        
+        .tags-wrapper { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; max-height: 200px; overflow-y: auto; background: #f8fafc; }
+        .tag-checkbox-label { display: inline-flex; align-items: center; gap: 6px; background: white; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; transition: 0.2s; user-select: none; color: #475569; }
+        .tag-checkbox-label:hover { border-color: var(--primary); }
+        .tag-checkbox-label:has(input:checked) { background: #eff6ff; border-color: var(--primary); color: #1d4ed8; font-weight: bold; }
+        .tag-checkbox-label input { cursor: pointer; margin: 0; }
+        
+        .toggle-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem; font-weight: bold; color: #334155; margin-top: 5px;}
+        .toggle-wrap input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        
+        .zoom-controls { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 5px; z-index: 10; background: white; padding: 5px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border: 1px solid var(--border-color); }
+        .zoom-btn { background: #f8fafc; border: 1px solid #cbd5e1; width: 32px; height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #334155; transition: 0.2s; }
+        .zoom-btn:hover { background: #e2e8f0; color: var(--primary); }
+
+        .copy-btn-wrap { position: absolute; top: 15px; right: 15px; z-index: 10; display: none; }
+        .btn-copy { background: rgba(255, 255, 255, 0.9); color: #334155; border: 1px solid #cbd5e1; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+        .btn-copy:hover { background: white; color: var(--primary); border-color: var(--primary); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-copy.success { background: #10b981; color: white; border-color: #10b981; }
+
+        .node { cursor: pointer !important; }
+        .node:hover rect, .node:hover circle, .node:hover polygon { stroke: var(--primary) !important; stroke-width: 3px !important; filter: drop-shadow(0 4px 6px rgba(59, 130, 246, 0.4)); }
+
+        #detail-panel {
+            position: absolute; top: 0; right: -400px; width: 380px; height: 100%;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+            box-shadow: -4px 0 15px rgba(0,0,0,0.1);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100; display: flex; flex-direction: column; border-left: 1px solid var(--border-color);
+        }
+        #detail-panel.open { right: 0; }
+        .panel-header { background: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h2 { margin: 0; font-size: 1.1rem; }
+        .close-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; opacity: 0.7; transition: 0.2s; }
+        .close-btn:hover { opacity: 1; transform: scale(1.1); }
+        .panel-content { padding: 20px; overflow-y: auto; flex-grow: 1; }
+        
+        .detail-item { margin-bottom: 15px; }
+        .detail-label { font-size: 0.8rem; color: var(--text-muted); font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+        .detail-value { font-size: 0.95rem; color: var(--text-main); background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color); word-break: break-word; }
+        
+        .port-list { list-style: none; padding: 0; margin: 0; }
+        .port-item { background: white; border: 1px solid #cbd5e1; margin-bottom: 8px; padding: 10px; border-radius: 6px; font-size: 0.9rem; border-left: 4px solid var(--primary); }
+        .port-item .peer-name { font-weight: bold; color: #1e293b; margin-bottom: 4px; display: block; }
+        .port-item .port-details { color: #64748b; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; margin-bottom: 4px;}
+        .port-item .port-meta { font-size: 0.75rem; color: #10b981; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; display: inline-block;}
+
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.2); z-index: 50; display: none; opacity: 0; transition: opacity 0.3s; }
+        #overlay.show { display: block; opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <button class="btn-hamburger" onclick="toggleSidebar()" title="設定パネルを開閉">☰</button>
+        <h1>🌐 Local Topology Viewer v1.0</h1>
+    </div>
+    <div id="dataStatus">🔴 データ未読み込み</div>
+</div>
+
+<div id="main-container">
+    
+    <div id="settings-sidebar">
+        <div class="sidebar-content">
+            <div class="control-group">
+                <label class="control-label">1. Data File (YAML)</label>
+                <p class="help-text">Editorで出力した <code>topology_data_YYYYMMDD.yaml</code> を選択してください。</p>
+                <input type="file" id="fileInput" accept=".yaml,.yml">
+            </div>
+            
+            <div class="control-group">
+                <label class="control-label">2. Target Tags (可視化対象)</label>
+                <p class="help-text">チェックを入れたタグを持つデバイスと経路を描画します。</p>
+                <div class="tags-wrapper" id="tagContainer">
+                    <span class="help-text" style="color: #94a3b8;">データを読み込むとタグ一覧が表示されます</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label class="control-label">3. Max Depth (深さ制限)</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+                    <input type="number" id="depthInput" value="3" min="1" max="50">
+                    <span style="font-size: 0.85rem; color: #64748b; font-weight: bold;">ホップ</span>
+                </div>
+                <label class="toggle-wrap" style="margin-top: 5px;">
+                    <input type="checkbox" id="noLimitInput" onchange="document.getElementById('depthInput').disabled = this.checked">
+                    制限しない（抜け漏れチェック用）
+                </label>
+            </div>
+            
+            <div class="control-group">
+                <label class="control-label">4. Layout Options (フロア表示)</label>
+                <label class="toggle-wrap">
+                    <input type="checkbox" id="floorModeInput" onchange="document.getElementById('locDepthInput').disabled = !this.checked">
+                    Floor Mode (枠線で囲む) を有効にする
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 5px;">
+                    <span style="font-size: 0.85rem; font-weight: bold; color: #64748b;">表示する階層の深さ:</span>
+                    <select id="locDepthInput" disabled style="width: 100%;">
+                        <option value="0">Level 0 (フロアのみ)</option>
+                        <option value="1" selected>Level 1 (フロア / 部屋)</option>
+                        <option value="2">Level 2 (フロア / 部屋 / 詳細)</option>
+                        <option value="-1">すべて (フルパス)</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="generateTopology()">✨ トポロジーを描画する</button>
+        </div>
+    </div>
+
+    <div id="mermaid-container">
+        <div id="initial-msg" style="color: #94a3b8; font-style: italic; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; text-align: center;">
+            👈 左側のパネルからデータを読み込んで描画してください
+        </div>
+        
+        <div class="copy-btn-wrap" id="copy-wrap">
+            <button class="btn-copy" id="btn-copy" onclick="copyMermaidCode()">📋 Mermaidコードをコピー</button>
+        </div>
+
+        <div class="zoom-controls" id="zoom-controls" style="display: none;">
+            <button class="zoom-btn" onclick="zoomManual(0.15)" title="拡大">＋</button>
+            <button class="zoom-btn" onclick="zoomManual(-0.15)" title="縮小">－</button>
+            <button class="zoom-btn" onclick="resetZoom()" title="全体表示 (Fit to Screen)">↺</button>
+        </div>
+    </div>
+
+    <div id="overlay" onclick="closePanel()"></div>
+    
+    <div id="detail-panel">
+        <div class="panel-header">
+            <h2 id="panel-title">Device Details</h2>
+            <button class="close-btn" onclick="closePanel()">×</button>
+        </div>
+        <div class="panel-content">
+            <div class="detail-item">
+                <div class="detail-label">Role</div>
+                <div class="detail-value" id="panel-role">-</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Location</div>
+                <div class="detail-value" id="panel-location">-</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Tags</div>
+                <div class="detail-value" id="panel-tags" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 0; border: none; background: transparent;">-</div>
+            </div>
+            <div class="detail-item" style="margin-top: 25px;">
+                <div class="detail-label" style="color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">🔗 Port Connections</div>
+                <ul class="port-list" id="panel-ports"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db = { devices: [], cables: [], locations: [] };
+    let currentMermaidCode = "";
+    let currentScale = 1, currentX = 0, currentY = 0;
+    let isDragging = false, dragStartX = 0, dragStartY = 0, initialX = 0, initialY = 0;
+
+    window.toggleSidebar = function() {
+        const sidebar = document.getElementById('settings-sidebar');
+        sidebar.classList.toggle('closed');
+    };
+
+    // 🔥 ファイル読み込みを YAML 対応に変更 🔥
+    document.getElementById('fileInput').addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = jsyaml.load(text); // JSON.parse から変更
+            if (data.devices && data.cables && data.locations) {
+                db = data;
+                const statusEl = document.getElementById('dataStatus');
+                statusEl.innerHTML = `🟢 読み込み完了 (${db.devices.length} Devices, ${db.cables.length} Cables)`;
+                statusEl.classList.add('loaded');
+                updateTagUI();
+            } else {
+                alert("ファイルの形式が違います。Editorから出力した「YAMLデータ」を選択してください。");
+            }
+        } catch (e) {
+            alert("YAMLの読み込みに失敗しました: " + e.message);
+        }
+    });
+
+    function updateTagUI() {
+        const container = document.getElementById('tagContainer');
+        if (!db.devices.length) return;
+        const allTags = new Set();
+        let hasUntagged = false;
+
+        db.devices.forEach(d => { 
+            if (d.tags && Array.isArray(d.tags) && d.tags.length > 0) {
+                d.tags.forEach(t => allTags.add(t)); 
+            } else {
+                hasUntagged = true;
+            }
+        });
+        
+        container.innerHTML = '';
+        if (allTags.size === 0 && !hasUntagged) { 
+            container.innerHTML = '<span class="help-text">描画対象のデバイスがありません。</span>'; 
+            return; 
+        }
+        
+        Array.from(allTags).sort().forEach(tag => {
+            const label = document.createElement('label');
+            label.className = 'tag-checkbox-label';
+            label.innerHTML = `<input type="checkbox" value="${tag}" class="tag-checkbox"> ${tag}`;
+            container.appendChild(label);
+        });
+
+        if (hasUntagged) {
+            const label = document.createElement('label');
+            label.className = 'tag-checkbox-label';
+            label.innerHTML = `<input type="checkbox" value="__UNTAGGED__" class="tag-checkbox"> <i>(Untagged)</i>`;
+            container.appendChild(label);
+        }
+    }
+
+    function getGroupName(locId, targetLevel) {
+        if (!locId) return "未配置";
+        const locLookup = new Map(db.locations.map(l => [l.id, l]));
+        let path = [];
+        let currId = locId;
+        let visited = new Set();
+        while (currId && locLookup.has(currId) && !visited.has(currId)) {
+            visited.add(currId);
+            path.push(locLookup.get(currId).name);
+            currId = locLookup.get(currId).parent_id;
+        }
+        path.reverse();
+        if (targetLevel === -1) return path.join(" / ");
+        return path.slice(0, targetLevel + 1).join(" / ");
+    }
+
+    window.showDeviceDetails = function(deviceId) {
+        const container = document.getElementById('mermaid-container');
+        if (container.classList.contains('is-dragging')) return;
+
+        const dev = db.devices.find(d => d.id === deviceId);
+        if (!dev) return;
+
+        document.getElementById('panel-title').innerText = dev.name || 'Unknown Device';
+        document.getElementById('panel-role').innerText = dev.role || '-';
+        document.getElementById('panel-location').innerText = getGroupName(dev.location_id, -1);
+        
+        const tagsContainer = document.getElementById('panel-tags');
+        if (dev.tags && dev.tags.length > 0) {
+            tagsContainer.innerHTML = dev.tags.map(t => `<span style="background: #e2e8f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; color: #475569;">${t}</span>`).join('');
+        } else {
+            tagsContainer.innerHTML = '<span style="color: #94a3b8; font-size: 0.9rem; font-style: italic;">(Untagged)</span>';
+        }
+
+        const portsList = document.getElementById('panel-ports');
+        portsList.innerHTML = '';
+        let connectionsFound = false;
+
+        db.cables.forEach(c => {
+            if (c.device_a_id === dev.id) {
+                const peer = db.devices.find(x => x.id === c.device_b_id);
+                addPortItem(c.port_a, c.port_b, peer, dev.ports);
+                connectionsFound = true;
+            } else if (c.device_b_id === dev.id) {
+                const peer = db.devices.find(x => x.id === c.device_a_id);
+                addPortItem(c.port_b, c.port_a, peer, dev.ports);
+                connectionsFound = true;
+            }
+        });
+
+        if (!connectionsFound) portsList.innerHTML = '<li style="color: #94a3b8; font-size: 0.9rem; font-style: italic;">接続されているケーブルはありません。</li>';
+
+        document.getElementById('detail-panel').classList.add('open');
+        document.getElementById('overlay').classList.add('show');
+    };
+
+    function addPortItem(localPortName, remotePortName, peerDev, myPortsArray) {
+        const portsList = document.getElementById('panel-ports');
+        const li = document.createElement('li');
+        li.className = 'port-item';
+        const peerName = peerDev ? peerDev.name : '不明なデバイス';
+        const peerRole = peerDev && peerDev.role ? `[${peerDev.role}]` : '';
+        const lPort = localPortName || '未設定';
+        const rPort = remotePortName || '未設定';
+        
+        // 🔥 ポート詳細（IP/MAC）があれば取得して表示 🔥
+        let metaHtml = '';
+        if (myPortsArray && Array.isArray(myPortsArray)) {
+            const portData = myPortsArray.find(p => p.name === localPortName);
+            if (portData && (portData.ip || portData.mac)) {
+                let infos = [];
+                if (portData.ip) infos.push(`IP: ${portData.ip}`);
+                if (portData.mac) infos.push(`MAC: ${portData.mac}`);
+                metaHtml = `<div class="port-meta">${infos.join(' | ')}</div>`;
+            }
+        }
+
+        li.innerHTML = `
+            <span class="peer-name">${peerName} <span style="font-weight:normal; color:#64748b; font-size:0.8rem;">${peerRole}</span></span>
+            <div class="port-details">
+                <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; border:1px solid #e2e8f0;">自: ${lPort}</span>
+                <span>↔</span>
+                <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; border:1px solid #e2e8f0;">先: ${rPort}</span>
+            </div>
+            ${metaHtml}
+        `;
+        portsList.appendChild(li);
+    }
+
+    // --- (以降のPan/Zoom機能、Mermaid描画関数は変更なしのため省略せずそのまま) ---
+    window.closePanel = function() {
+        document.getElementById('detail-panel').classList.remove('open');
+        document.getElementById('overlay').classList.remove('show');
+    };
+
+    window.copyMermaidCode = function() {
+        if (!currentMermaidCode) return;
+        navigator.clipboard.writeText(currentMermaidCode).then(() => {
+            const btn = document.getElementById('btn-copy');
+            btn.innerHTML = '✅ コピーしました！';
+            btn.classList.add('success');
+            setTimeout(() => {
+                btn.innerHTML = '📋 Mermaidコードをコピー';
+                btn.classList.remove('success');
+            }, 2000);
+        }).catch(err => {
+            console.error('クリップボードへのコピーに失敗しました', err);
+            alert('コピーに失敗しました。');
+        });
+    };
+
+    function initPanZoom() {
+        const container = document.getElementById('mermaid-container');
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.id = 'svg-wrapper';
+        svg.parentNode.insertBefore(wrapper, svg);
+        wrapper.appendChild(svg);
+
+        document.getElementById('zoom-controls').style.display = 'flex';
+        document.getElementById('copy-wrap').style.display = 'block';
+
+        resetZoom();
+
+        container.onmousedown = (e) => {
+            if (e.target.closest('.zoom-controls') || e.target.closest('.copy-btn-wrap') || e.target.closest('.node')) {
+                if (e.target.closest('.node')) return; 
+            }
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            initialX = currentX;
+            initialY = currentY;
+        };
+
+        window.onmousemove = (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - dragStartX;
+            const dy = e.clientY - dragStartY;
+            currentX = initialX + dx;
+            currentY = initialY + dy;
+            updateTransform();
+            
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                container.classList.add('is-dragging');
+            }
+        };
+
+        window.onmouseup = () => {
+            isDragging = false;
+            setTimeout(() => container.classList.remove('is-dragging'), 100);
+        };
+
+        container.onwheel = (e) => {
+            e.preventDefault();
+            const zoomAmount = e.deltaY * -0.0015; 
+            zoom(zoomAmount, e.clientX, e.clientY);
+        };
+    }
+
+    window.zoom = function(delta, mouseX, mouseY) {
+        const container = document.getElementById('mermaid-container');
+        const cRect = container.getBoundingClientRect();
+        const prevScale = currentScale;
+        currentScale += delta;
+        if (currentScale < 0.1) currentScale = 0.1;
+        if (currentScale > 5) currentScale = 5;
+
+        const pivotX = mouseX - cRect.left;
+        const pivotY = mouseY - cRect.top;
+        currentX = pivotX - (pivotX - currentX) * (currentScale / prevScale);
+        currentY = pivotY - (pivotY - currentY) * (currentScale / prevScale);
+        updateTransform();
+    };
+
+    window.zoomManual = function(delta) {
+        const container = document.getElementById('mermaid-container');
+        const cRect = container.getBoundingClientRect();
+        zoom(delta, cRect.left + cRect.width / 2, cRect.top + cRect.height / 2);
+    }
+
+    window.resetZoom = function() {
+        const container = document.getElementById('mermaid-container');
+        const wrapper = document.getElementById('svg-wrapper');
+        if (!wrapper) return;
+        const svg = wrapper.querySelector('svg');
+        if (!svg) return;
+
+        const cRect = container.getBoundingClientRect();
+        const svgBox = svg.getBoundingClientRect();
+        
+        const originalWidth = svgBox.width / (currentScale || 1);
+        const originalHeight = svgBox.height / (currentScale || 1);
+
+        if (originalWidth === 0 || originalHeight === 0) return;
+
+        const scaleX = cRect.width / originalWidth;
+        const scaleY = cRect.height / originalHeight;
+        
+        currentScale = Math.min(scaleX, scaleY) * 0.95;
+        if (currentScale > 1) currentScale = 1;
+
+        currentX = (cRect.width - (originalWidth * currentScale)) / 2;
+        currentY = (cRect.height - (originalHeight * currentScale)) / 2;
+        updateTransform();
+    }
+
+    function updateTransform() {
+        const wrapper = document.getElementById('svg-wrapper');
+        if (wrapper) wrapper.style.transform = `translate(${currentX}px, ${currentY}px) scale(${currentScale})`;
+    }
+
+    async function generateTopology() {
+        if (!db.devices.length || !db.cables.length) return alert("データを読み込んでください。");
+
+        const checkedBoxes = document.querySelectorAll('.tag-checkbox:checked');
+        const activeTags = Array.from(checkedBoxes).map(cb => cb.value);
+        const hasAnyTags = document.querySelectorAll('.tag-checkbox').length > 0;
+
+        let filteredDevices = db.devices;
+        if (hasAnyTags) {
+            if (activeTags.length === 0) return alert("少なくとも1つのタグを選択してください。");
+            filteredDevices = db.devices.filter(d => {
+                const isUntagged = !d.tags || !Array.isArray(d.tags) || d.tags.length === 0;
+                if (isUntagged && activeTags.includes('__UNTAGGED__')) return true;
+                if (!isUntagged && d.tags.some(tag => activeTags.includes(tag))) return true;
+                return false;
+            });
+        }
+
+        const isNoLimit = document.getElementById('noLimitInput').checked;
+        const maxDepth = isNoLimit ? 999 : (parseInt(document.getElementById('depthInput').value) || 3);
+        
+        const isFloorMode = document.getElementById('floorModeInput').checked;
+        const locDepth = parseInt(document.getElementById('locDepthInput').value);
+
+        if (!filteredDevices.length) return alert("描画対象のデバイスが見つかりません。");
+
+        const uniqueMap = new Map(filteredDevices.map(d => [d.id, d]));
+        const deviceIds = new Set(uniqueMap.keys());
+        const adj = new Map();
+        deviceIds.forEach(id => adj.set(id, new Set()));
+
+        db.cables.forEach(c => {
+            const a = c.device_a_id;
+            const b = c.device_b_id;
+            if (deviceIds.has(a) && deviceIds.has(b)) {
+                adj.get(a).add(b);
+                adj.get(b).add(a);
+            }
+        });
+
+        let roots = filteredDevices.filter(d => (d.role || "") === "ONU").map(d => d.id);
+        if (!roots.length) roots = filteredDevices.filter(d => (d.role || "") === "External Router").map(d => d.id);
+        if (!roots.length) roots = filteredDevices.filter(d => (d.role || "").includes("External")).map(d => d.id);
+        if (!roots.length) roots = [filteredDevices[0].id];
+
+        const distances = new Map();
+        deviceIds.forEach(id => distances.set(id, 999));
+        const queue = [];
+        roots.forEach(r => { distances.set(r, 0); queue.push(r); });
+
+        while (queue.length > 0) {
+            const u = queue.shift();
+            adj.get(u).forEach(v => {
+                if (distances.get(v) === 999) {
+                    distances.set(v, distances.get(u) + 1);
+                    queue.push(v);
+                }
+            });
+        }
+
+        const visibleNodes = new Set();
+        if (isNoLimit) {
+            deviceIds.forEach(id => visibleNodes.add(id));
+        } else {
+            for (const [id, dist] of distances.entries()) {
+                if (dist <= maxDepth) visibleNodes.add(id);
+            }
+        }
+
+        const summaryMap = new Map();
+        if (!isNoLimit) {
+            deviceIds.forEach(id => {
+                if (visibleNodes.has(id)) return;
+                let current = id;
+                let ancestorFound = null;
+                while (distances.get(current) > 0 && distances.get(current) !== 999) {
+                    const parents = Array.from(adj.get(current)).filter(n => distances.get(n) === distances.get(current) - 1);
+                    if (!parents.length) break;
+                    const parent = parents[0];
+                    if (visibleNodes.has(parent)) { ancestorFound = parent; break; }
+                    current = parent;
+                }
+                if (ancestorFound) {
+                    if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
+                    const d = uniqueMap.get(id);
+                    const tagName = (d.tags && d.tags.length > 0) ? d.tags[0] : "Untagged";
+                    summaryMap.get(ancestorFound)[tagName] = (summaryMap.get(ancestorFound)[tagName] || 0) + 1;
+                }
+            });
+        }
+
+        let mermaidLines = ["graph TD"];
+        
+        function getIcon(role) {
+            const r = role || "";
+            if (r.includes("Firewall")) return "🛡️";
+            if (r.includes("Switch") || r.includes("HUB")) return "🔀";
+            if (r.includes("AP") || r.includes("Wireless")) return "📡";
+            if (r.includes("Router") || r.includes("ONU") || r.includes("External") || r.includes("Gateway")) return "🌐";
+            if (r.includes("Server")) return "🖥️";
+            if (r.includes("Controller")) return "⚙️";
+            return "📦"; 
+        }
+
+        function addSummary(pId) {
+            const sums = summaryMap.get(pId);
+            if (!sums) return;
+            for (const [tagName, count] of Object.entries(sums)) {
+                const sId = `sum_${pId}_${tagName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                mermaidLines.push(`        ${sId}("☁️ ${tagName}<br/>(x${count} devs)")`);
+                mermaidLines.push(`        style ${sId} stroke-dasharray: 5 5, fill:#f9f9f9`);
+                mermaidLines.push(`        dev_${pId} -.-> ${sId}`);
+            }
+        }
+
+        if (isFloorMode) {
+            const groups = new Map();
+            visibleNodes.forEach(id => {
+                const d = uniqueMap.get(id);
+                const gName = getGroupName(d.location_id, locDepth);
+                if (!groups.has(gName)) groups.set(gName, []);
+                groups.get(gName).push(d);
+            });
+
+            Array.from(groups.keys()).sort().forEach(gName => {
+                let sId = gName.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '');
+                if (!sId) sId = `loc_${Math.floor(Math.random() * 1000)}`;
+                mermaidLines.push(`    subgraph ${sId} ["🏢 ${gName}"]`);
+                groups.get(gName).sort((a, b) => distances.get(a.id) - distances.get(b.id)).forEach(d => {
+                    mermaidLines.push(`        dev_${d.id}("${getIcon(d.role)} ${d.name}<br/>[${d.role || 'Role未定'}]")`);
+                    mermaidLines.push(`        click dev_${d.id} call showDeviceDetails("${d.id}")`);
+                    addSummary(d.id);
+                });
+                mermaidLines.push("    end");
+            });
+        } else {
+            Array.from(visibleNodes).sort((a, b) => distances.get(a) - distances.get(b)).forEach(id => {
+                const d = uniqueMap.get(id);
+                mermaidLines.push(`    dev_${id}("${getIcon(d.role)} ${d.name}<br/>[${d.role || 'Role未定'}]")`);
+                mermaidLines.push(`    click dev_${id} call showDeviceDetails("${d.id}")`);
+                addSummary(id);
+            });
+        }
+
+        db.cables.forEach(c => {
+            const a = c.device_a_id;
+            const b = c.device_b_id;
+            if (visibleNodes.has(a) && visibleNodes.has(b)) {
+                if (distances.get(a) <= distances.get(b)) {
+                    mermaidLines.push(`    dev_${a} --> dev_${b}`);
+                } else {
+                    mermaidLines.push(`    dev_${b} --> dev_${a}`);
+                }
+            }
+        });
+
+        currentMermaidCode = mermaidLines.join("\n");
+
+        const container = document.getElementById('mermaid-container');
+        const existingZoom = document.getElementById('zoom-controls');
+        const existingCopy = document.getElementById('copy-wrap');
+        
+        container.innerHTML = `
+            <div id="loading-msg" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #3b82f6; font-weight: bold; z-index: 20;">⏳ Rendering Topology...</div>
+            <div id="svg-container" style="width: 100%; height: 100%; opacity: 0; transition: opacity 0.3s;"></div>
+        `;
+        if (existingCopy) container.appendChild(existingCopy);
+        if (existingZoom) container.appendChild(existingZoom);
+        
+        setTimeout(async () => {
+            const svgContainer = document.getElementById('svg-container');
+            svgContainer.innerHTML = `<pre class="mermaid">${currentMermaidCode}</pre>`;
+            try {
+                await window.mermaid.run({ nodes: svgContainer.querySelectorAll('.mermaid') });
+                
+                const loadingMsg = document.getElementById('loading-msg');
+                if(loadingMsg) loadingMsg.style.display = 'none';
+                
+                initPanZoom();
+                svgContainer.style.opacity = '1';
+                
+                document.getElementById('settings-sidebar').classList.add('closed');
+                
+            } catch (e) {
+                svgContainer.innerHTML = `<div style="color: #ef4444; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">❌ 描画エラーが発生しました: ${e.message}</div>`;
+            }
+        }, 100);
+    }
+</script>
+
+</body>
+</html>

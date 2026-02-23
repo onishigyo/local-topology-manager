@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Local Topology Editor v1.0</title>
+    <script src="./lib/js-yaml.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; margin: 0; color: #333; }
+        .header { background-color: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .container { padding: 20px; max-width: 1400px; margin: auto; }
+        
+        .controls { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+        .btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-primary { background: #3b82f6; } .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: #10b981; } .btn-success:hover { background: #059669; }
+        .btn-danger { background: #ef4444; padding: 4px 8px; font-size: 0.8rem;} .btn-danger:hover { background: #dc2626; }
+        .btn-notion { background: #8b5cf6; } .btn-notion:hover { background: #7c3aed; }
+        
+        .btn-icon { background: #e2e8f0; color: #475569; font-size: 1.1rem; padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer; transition: 0.2s; }
+        .btn-icon:hover { background: #cbd5e1; transform: scale(1.1); }
+        .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+        .btn-swap { background: #64748b; font-size: 1.2rem; padding: 4px 8px; border-radius: 4px; color: white;} .btn-swap:hover { background: #475569; transform: scale(1.1); }
+        .btn-outline { background: white; color: #10b981; border: 2px solid #10b981; } .btn-outline:hover { background: #ecfdf5; }
+        
+        .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; }
+        .file-upload-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
+        
+        .tabs { display: flex; gap: 2px; margin-bottom: 0; }
+        .tab { padding: 10px 20px; background: #e5e7eb; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: bold; color: #4b5563; }
+        .tab.active { background: white; color: #1e293b; border-top: 3px solid #3b82f6; }
+        
+        .table-container { background: white; padding: 20px; border-radius: 0 8px 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto; min-height: 400px; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; }
+        th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: middle; background: white; transition: background 0.2s; }
+        th { background-color: #f8fafc; font-weight: bold; color: #475569; font-size: 0.9rem; white-space: nowrap; }
+        .hint-text { font-size: 0.75rem; color: #94a3b8; font-weight: normal; margin-left: 4px; }
+        
+        .action-wrap { display: inline-flex; gap: 4px; align-items: center; justify-content: center; }
+        
+        input[type="text"], select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 0.9rem; }
+        input[type="text"]:focus, select:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        .search-input { background-color: #f8fafc; cursor: pointer; }
+        .search-input:focus { background-color: #fff; cursor: text; }
+        
+        .tag-container { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; background: #fff; min-height: 32px; align-items: center; cursor: text; transition: 0.2s; }
+        .tag-container:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        .tag-pill { background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; font-weight: 500; }
+        .tag-remove { cursor: pointer; color: #94a3b8; font-weight: bold; line-height: 1; margin-top: -2px; }
+        .tag-remove:hover { color: #ef4444; }
+        .tag-input { border: none !important; outline: none !important; flex-grow: 1; min-width: 60px; padding: 2px 0 !important; font-size: 0.85rem; box-shadow: none !important; background: transparent; }
+        
+        .empty-state { text-align: center; color: #6b7280; padding: 40px; font-style: italic; }
+        .tree-dot { color: #10b981; font-weight: bold; margin-right: 5px; font-size: 1.1rem; }
+
+        /* Modal Styles */
+        #modalOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: #1e293b; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #94a3b8; }
+        .modal-close:hover { color: #ef4444; }
+        
+        /* ポートテーブルが親テーブルのmin-widthに引きずられないようにする修正 */
+        #portTable { min-width: auto; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🗄️ Local Topology Editor v1.0</h1>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn btn-success" onclick="exportData('yaml')" title="次回編集 ＆ Viewer読み込み用">💾 Export YAML</button>
+        <button class="btn btn-notion" onclick="exportData('notion')" title="Notion等の資産管理DB用">📓 Export CSV (Notion用)</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="controls">
+        <div>
+            <label style="font-weight: bold; font-size: 0.9rem; display: block; margin-bottom: 5px;">Data YAMLインポート</label>
+            <div class="file-upload-wrapper">
+                <button class="btn btn-outline" style="color: #3b82f6; border-color: #3b82f6;">📂 Load YAML File</button>
+                <input type="file" id="importYAML" accept=".yaml,.yml">
+            </div>
+        </div>
+        <div style="flex-grow: 1; text-align: right; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
+            <div id="devicesSortUI" style="display: flex; gap: 5px; align-items: center;">
+                <select id="deviceSortKey" style="width: auto; padding: 4px;">
+                    <option value="location">Location順</option>
+                    <option value="role">Role順</option>
+                    <option value="name">Name順</option>
+                </select>
+                <button class="btn btn-outline" onclick="sortDevices()">🔽 ソート実行</button>
+            </div>
+            <button id="btnSortLocations" class="btn btn-outline" style="display: none;" onclick="sortLocationsTree()">🌲 階層順に自動ソート</button>
+            <button class="btn btn-primary" onclick="addNewRow()">➕ 新規行を追加</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('devices')">Devices</button>
+        <button class="tab" onclick="switchTab('cables')">Cables</button>
+        <button class="tab" onclick="switchTab('locations')">Locations</button>
+    </div>
+
+    <div class="table-container">
+        <table id="dataTable">
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modalOverlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Port Management</h2>
+            <button class="modal-close" onclick="closePortModal()">×</button>
+        </div>
+        <div style="margin-bottom: 10px; text-align: right;">
+            <button class="btn btn-primary" style="padding: 6px 10px; font-size: 0.85rem;" onclick="addPortRow()">➕ ポートを追加</button>
+        </div>
+        <table id="portTable">
+            <thead>
+                <tr>
+                    <th>Port Name</th>
+                    <th>IP Address</th>
+                    <th>MAC Address</th>
+                    <th style="width: 50px; text-align: center;">🗑️</th>
+                </tr>
+            </thead>
+            <tbody id="portTableBody"></tbody>
+        </table>
+        <div style="margin-top: 20px; text-align: right; display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn" style="background: #94a3b8;" onclick="closePortModal()">Cancel</button>
+            <button class="btn btn-success" onclick="savePorts()">Save Ports</button>
+        </div>
+    </div>
+</div>
+
+<datalist id="roleList"></datalist>
+<datalist id="deviceList"></datalist>
+<datalist id="dynamicPortList"></datalist>
+
+<script>
+    const schemas = {
+        devices: ['id', 'name', 'role', 'location_id', 'tags', 'ports'],
+        cables: ['device_a_id', 'port_a', 'device_b_id', 'port_b'],
+        locations: ['id', 'name', 'parent_id']
+    };
+
+    let db = { devices: [], cables: [], locations: [] };
+    let currentTab = 'devices';
+    let focusAfterRender = null;
+    let editingDeviceIndex = null;
+    let tempPorts = [];
+
+    // 🔥 インポート機能：YAML 読込 🔥
+    document.getElementById('importYAML').addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const data = jsyaml.load(text);
+            
+            if (data.devices) {
+                data.devices = data.devices.map(d => ({
+                    ...d,
+                    tags: Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || ""),
+                    ports: d.ports || [] 
+                }));
+            }
+            
+            db.devices = data.devices || [];
+            db.cables = data.cables || [];
+            db.locations = data.locations || [];
+            
+            updateDatalists();
+            renderTable();
+        } catch (e) {
+            alert("❌ YAMLの読み込みに失敗しました: " + e.message);
+        }
+        event.target.value = ''; 
+    });
+
+    function getFloorWeight(name) {
+        if (!name) return 0;
+        const upper = name.toUpperCase();
+        if (upper.includes('PH')) return 10000; 
+        if (upper.includes('RF')) return 9999;  
+        const bMatch = upper.match(/B(\d+)/);
+        if (bMatch) return -parseInt(bMatch[1], 10); 
+        const numMatch = upper.match(/(\d+)/);
+        if (numMatch) return parseInt(numMatch[1], 10); 
+        return 0; 
+    }
+
+    function compareFloorPaths(pathA, pathB) {
+        const partsA = pathA.split(' / ');
+        const partsB = pathB.split(' / ');
+        const len = Math.max(partsA.length, partsB.length);
+        for(let i=0; i<len; i++) {
+            if (!partsA[i]) return -1;
+            if (!partsB[i]) return 1;
+            const wA = getFloorWeight(partsA[i]);
+            const wB = getFloorWeight(partsB[i]);
+            if (wA !== wB) return wB - wA; 
+            if (partsA[i] !== partsB[i]) return partsA[i].localeCompare(partsB[i]);
+        }
+        return 0;
+    }
+
+    function getFullLocName(locId) {
+        if (!locId) return "未設定";
+        const locLookup = new Map(db.locations.map(l => [l.id, l]));
+        let path = [];
+        let curr = locId;
+        let visited = new Set();
+        while (curr && locLookup.has(curr) && !visited.has(curr)) {
+            visited.add(curr);
+            path.push(locLookup.get(curr).name);
+            curr = locLookup.get(curr).parent_id;
+        }
+        return path.length > 0 ? path.reverse().join(' / ') : "不明なLocation";
+    }
+
+    function getLocDepth(locId) {
+        let depth = 0;
+        let curr = db.locations.find(l => l.id === locId);
+        let visited = new Set();
+        while (curr && curr.parent_id && !visited.has(curr.id)) {
+            visited.add(curr.id);
+            depth++;
+            curr = db.locations.find(l => l.id === curr.parent_id);
+        }
+        return depth;
+    }
+
+    function sortLocationsTree() {
+        const roots = db.locations.filter(l => !l.parent_id);
+        const childrenMap = new Map();
+        db.locations.forEach(l => {
+            if (l.parent_id) {
+                if (!childrenMap.has(l.parent_id)) childrenMap.set(l.parent_id, []);
+                childrenMap.get(l.parent_id).push(l);
+            }
+        });
+        const sorted = [];
+        function traverse(node) {
+            sorted.push(node);
+            const children = childrenMap.get(node.id) || [];
+            children.sort((a, b) => compareFloorPaths(a.name, b.name));
+            children.forEach(traverse);
+        }
+        roots.sort((a, b) => compareFloorPaths(a.name, b.name));
+        roots.forEach(traverse);
+        const sortedIds = new Set(sorted.map(l => l.id));
+        const orphans = db.locations.filter(l => !sortedIds.has(l.id));
+        db.locations = [...sorted, ...orphans];
+        renderTable();
+    }
+
+    function sortDevices() {
+        const key = document.getElementById('deviceSortKey').value;
+        db.devices.sort((a, b) => {
+            if (key === 'location') {
+                const locA = getFullLocName(a.location_id);
+                const locB = getFullLocName(b.location_id);
+                const cmp = compareFloorPaths(locA, locB);
+                if (cmp !== 0) return cmp;
+                return (a.name || '').localeCompare(b.name || '');
+            } else if (key === 'role') {
+                const rA = a.role || '';
+                const rB = b.role || '';
+                if (rA !== rB) return rA.localeCompare(rB);
+                return (a.name || '').localeCompare(b.name || '');
+            } else if (key === 'name') {
+                return (a.name || '').localeCompare(b.name || '');
+            }
+        });
+        renderTable();
+    }
+
+    function getDeviceLabel(d) {
+        if (!d) return "";
+        const locName = d.location_id ? getFullLocName(d.location_id) : '未配置';
+        const roleName = d.role || 'Role未定';
+        return `${d.name} [${roleName} @ ${locName}]`;
+    }
+
+    function updateDatalists() {
+        const roles = [...new Set(db.devices.map(d => d.role).filter(r => r))].sort();
+        document.getElementById('roleList').innerHTML = roles.map(r => `<option value="${r}">`).join('');
+        const deviceLabels = db.devices.map(d => `<option value="${getDeviceLabel(d)}">`).join('');
+        document.getElementById('deviceList').innerHTML = deviceLabels;
+    }
+
+    window.updatePortDatalist = function(deviceId) {
+        const dataList = document.getElementById('dynamicPortList');
+        dataList.innerHTML = ''; 
+        if (!deviceId) return;
+        
+        const dev = db.devices.find(d => d.id === deviceId);
+        if (dev && dev.ports) {
+            dataList.innerHTML = dev.ports.map(p => `<option value="${p.name}">`).join('');
+        }
+    };
+
+    window.updateCell = function(index, key, value) {
+        db[currentTab][index][key] = value;
+        if (key === 'role' || key === 'name' || key === 'location_id') updateDatalists();
+        if (currentTab === 'locations' && (key === 'name' || key === 'parent_id')) renderTable();
+    };
+
+    window.updateCableByLabel = function(index, key, label) {
+        const matchedDevice = db.devices.find(d => getDeviceLabel(d) === label);
+        if (matchedDevice) {
+            db.cables[index][key] = matchedDevice.id;
+        } else {
+            db.cables[index][key] = ""; 
+        }
+        renderTable();
+    };
+
+    window.swapCable = function(index) {
+        const tDev = db.cables[index].device_a_id;
+        db.cables[index].device_a_id = db.cables[index].device_b_id;
+        db.cables[index].device_b_id = tDev;
+        const tPort = db.cables[index].port_a;
+        db.cables[index].port_a = db.cables[index].port_b;
+        db.cables[index].port_b = tPort;
+        renderTable();
+    };
+
+    window.moveRowUp = function(index) {
+        if (index > 0) {
+            const temp = db[currentTab][index - 1];
+            db[currentTab][index - 1] = db[currentTab][index];
+            db[currentTab][index] = temp;
+            renderTable();
+        }
+    };
+
+    window.moveRowDown = function(index) {
+        if (index < db[currentTab].length - 1) {
+            const temp = db[currentTab][index + 1];
+            db[currentTab][index + 1] = db[currentTab][index];
+            db[currentTab][index] = temp;
+            renderTable();
+        }
+    };
+
+    window.addTag = function(index, inputElement, event) {
+        if (event) event.preventDefault();
+        let val = inputElement.value.trim().replace(/,/g, '');
+        if (val) {
+            let tags = db.devices[index].tags || "";
+            let tagList = tags.split(',').map(t => t.trim()).filter(t => t);
+            if (!tagList.includes(val)) {
+                tagList.push(val);
+                db.devices[index].tags = tagList.join(', ');
+                focusAfterRender = index;
+                renderTable();
+            } else { inputElement.value = ''; }
+        }
+    };
+
+    window.removeTag = function(index, tagToRemove) {
+        let tags = db.devices[index].tags || "";
+        let tagList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove);
+        db.devices[index].tags = tagList.join(', ');
+        renderTable();
+    };
+
+    window.removeLastTag = function(index) {
+        let tags = db.devices[index].tags || "";
+        let tagList = tags.split(',').map(t => t.trim()).filter(t => t);
+        if (tagList.length > 0) {
+            tagList.pop();
+            db.devices[index].tags = tagList.join(', ');
+            focusAfterRender = index;
+            renderTable();
+        }
+    };
+
+    window.switchTab = function(tabName) {
+        currentTab = tabName;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('devicesSortUI').style.display = tabName === 'devices' ? 'flex' : 'none';
+        document.getElementById('btnSortLocations').style.display = tabName === 'locations' ? 'block' : 'none';
+        renderTable();
+    };
+
+    window.openPortModal = function(deviceIndex) {
+        editingDeviceIndex = deviceIndex;
+        const dev = db.devices[deviceIndex];
+        document.getElementById('modalTitle').innerText = `Ports: ${dev.name || 'Unnamed Device'}`;
+        
+        tempPorts = JSON.parse(JSON.stringify(dev.ports || []));
+        renderPortTable();
+        document.getElementById('modalOverlay').style.display = 'flex';
+    };
+
+    window.closePortModal = function() {
+        document.getElementById('modalOverlay').style.display = 'none';
+        editingDeviceIndex = null;
+    };
+
+    window.savePorts = function() {
+        const trs = document.querySelectorAll('#portTableBody tr');
+        tempPorts = [];
+        trs.forEach(tr => {
+            const inputs = tr.querySelectorAll('input');
+            const pName = inputs[0].value.trim();
+            if (pName) {
+                tempPorts.push({
+                    name: pName,
+                    ip: inputs[1].value.trim() || null,
+                    mac: inputs[2].value.trim() || null
+                });
+            }
+        });
+        db.devices[editingDeviceIndex].ports = tempPorts;
+        renderTable(); 
+        closePortModal();
+    };
+
+    window.addPortRow = function() {
+        tempPorts.push({ name: "", ip: "", mac: "" });
+        renderPortTable();
+    };
+
+    window.removePortRow = function(index) {
+        tempPorts.splice(index, 1);
+        renderPortTable();
+    };
+
+    function renderPortTable() {
+        const tbody = document.getElementById('portTableBody');
+        tbody.innerHTML = '';
+        if (tempPorts.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="empty-state" style="padding: 20px;">ポートがありません。</td></tr>`;
+            return;
+        }
+        tempPorts.forEach((port, index) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" value="${port.name || ''}" placeholder="例: eth1"></td>
+                <td><input type="text" value="${port.ip || ''}" placeholder="192.168.1.1"></td>
+                <td><input type="text" value="${port.mac || ''}" placeholder="00:1A:2B:..."></td>
+                <td style="text-align: center;"><button class="btn btn-danger" onclick="removePortRow(${index})">✖</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderTable() {
+        const columns = schemas[currentTab];
+        const displayColumns = columns.filter(col => col !== 'id');
+        const data = db[currentTab];
+        const thead = document.getElementById('tableHead');
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        if (currentTab === 'cables') {
+            thead.innerHTML = `
+                <th style="width: 80px; text-align: center;">Move</th>
+                <th>Device A 🔍</th>
+                <th>Port A</th>
+                <th style="width: 50px; text-align: center;">Swap</th>
+                <th>Port B</th>
+                <th>Device B 🔍</th>
+                <th style="width: 60px; text-align: center;">Delete</th>
+            `;
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="empty-state">データがありません。右上のボタンから追加してください。</td></tr>`;
+                return;
+            }
+            data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                const devA = db.devices.find(d => d.id === row.device_a_id);
+                const devB = db.devices.find(d => d.id === row.device_b_id);
+                const labelA = devA ? getDeviceLabel(devA) : (row.device_a_id ? "⚠️ 削除されたデバイス" : "");
+                const labelB = devB ? getDeviceLabel(devB) : (row.device_b_id ? "⚠️ 削除されたデバイス" : "");
+                const portA = row.port_a || "";
+                const portB = row.port_b || "";
+
+                tr.innerHTML = `
+                    <td style="text-align: center;">
+                        <div class="action-wrap">
+                            <button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''} title="上へ">⬆️</button>
+                            <button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''} title="下へ">⬇️</button>
+                        </div>
+                    </td>
+                    <td><input type="text" list="deviceList" class="search-input" value="${labelA}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_a_id', this.value)"></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${portA}" placeholder="ポートを選択..." onfocus="updatePortDatalist('${row.device_a_id || ''}')" onchange="updateCell(${index}, 'port_a', this.value)"></td>
+                    <td style="text-align: center;"><button class="btn btn-swap" onclick="swapCable(${index})" title="左右を入れ替える">⇄</button></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${portB}" placeholder="ポートを選択..." onfocus="updatePortDatalist('${row.device_b_id || ''}')" onchange="updateCell(${index}, 'port_b', this.value)"></td>
+                    <td><input type="text" list="deviceList" class="search-input" value="${labelB}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_b_id', this.value)"></td>
+                    <td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})" title="削除">✖</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            return;
+        }
+
+        let headerHtml = displayColumns.map(col => {
+            let label = col;
+            if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
+            if (col === 'tags') label += ' <span class="hint-text">(⏎ Enterで確定)</span>';
+            if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
+            if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親ロケーション)</span>';
+            return `<th>${label}</th>`;
+        }).join('');
+        thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th>` + headerHtml + '<th style="width: 60px; text-align: center;">Delete</th>';
+
+        if (data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="${displayColumns.length + 2}" class="empty-state">データがありません。右上のボタンから追加してください。</td></tr>`;
+            return;
+        }
+
+        let locList = db.locations.map(l => ({ id: l.id, fullName: getFullLocName(l.id) }));
+        locList.sort((a, b) => compareFloorPaths(a.fullName, b.fullName));
+        const locOptions = `<option value="">-- 未設定 --</option>` + 
+            locList.map(l => `<option value="${l.id}">${l.fullName}</option>`).join('');
+
+        data.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            const tdMove = document.createElement('td');
+            tdMove.style.textAlign = 'center';
+            tdMove.innerHTML = `
+                <div class="action-wrap">
+                    <button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''} title="上へ">⬆️</button>
+                    <button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''} title="下へ">⬇️</button>
+                </div>
+            `;
+            tr.appendChild(tdMove);
+            
+            displayColumns.forEach(col => {
+                const td = document.createElement('td');
+                const val = row[col] || "";
+
+                if (currentTab === 'devices' && col === 'location_id') {
+                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${locOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
+                }
+                else if (currentTab === 'locations' && col === 'parent_id') {
+                    const parentOptions = `<option value="">-- なし (最上位) --</option>` + 
+                        db.locations.filter(l => l.id !== row.id).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${parentOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
+                }
+                else if (currentTab === 'locations' && col === 'name') {
+                    const depth = getLocDepth(row.id);
+                    const indentPx = depth * 20;
+                    const dotHtml = depth > 0 ? `<span class="tree-dot">・</span>` : ``;
+                    td.innerHTML = `
+                        <div style="display: flex; align-items: center; padding-left: ${indentPx}px;">
+                            ${dotHtml}
+                            <input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;">
+                        </div>
+                    `;
+                }
+                else if (currentTab === 'devices' && col === 'role') {
+                    td.innerHTML = `<input type="text" list="roleList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Access Switch">`;
+                }
+                else if (currentTab === 'devices' && col === 'tags') {
+                    let tagList = val.split(',').map(t => t.trim()).filter(t => t);
+                    let tagsHtml = tagList.map(t => `<span class="tag-pill">${t} <span class="tag-remove" onclick="removeTag(${index}, '${t}')">×</span></span>`).join('');
+                    td.innerHTML = `
+                        <div class="tag-container" onclick="this.querySelector('input').focus()">
+                            ${tagsHtml}
+                            <input type="text" class="tag-input" placeholder="${tagList.length === 0 ? 'タグを追加' : ''}"
+                                onkeydown="if(event.key === 'Enter' || event.key === ',') { addTag(${index}, this, event); } else if(event.key === 'Backspace' && this.value === '') { removeLastTag(${index}); }"
+                                onblur="if(this.value.trim()){ addTag(${index}, this); }">
+                        </div>
+                    `;
+                }
+                else if (currentTab === 'devices' && col === 'ports') {
+                    const portCount = (row.ports && Array.isArray(row.ports)) ? row.ports.length : 0;
+                    td.innerHTML = `<button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.85rem; width:100%;" onclick="openPortModal(${index})">🔌 Ports (${portCount})</button>`;
+                }
+                else {
+                    td.innerHTML = `<input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)">`;
+                }
+                tr.appendChild(td);
+            });
+            tr.innerHTML += `<td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})" title="削除">✖</button></td>`;
+            tbody.appendChild(tr);
+        });
+
+        if (focusAfterRender !== null) {
+            const inputToFocus = document.querySelector(`#tableBody tr:nth-child(${focusAfterRender + 1}) .tag-input`);
+            if (inputToFocus) inputToFocus.focus();
+            focusAfterRender = null;
+        }
+    }
+
+    window.addNewRow = function() {
+        const newRow = {};
+        schemas[currentTab].forEach(col => newRow[col] = (col === 'ports' ? [] : ""));
+        if (schemas[currentTab].includes('id')) {
+            newRow['id'] = currentTab === 'locations' ? `L-${Date.now().toString().slice(-4)}` : `D-${Date.now().toString().slice(-4)}`;
+        } else {
+             newRow['id'] = `cab_${Date.now().toString().slice(-4)}`;
+        }
+        db[currentTab].unshift(newRow);
+        renderTable();
+    };
+
+    window.deleteRow = function(index) {
+        if (confirm("この行を削除しますか？")) { db[currentTab].splice(index, 1); renderTable(); }
+    };
+
+    function downloadFile(filename, content, type) {
+        const blob = new Blob([content], { type: type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    }
+
+    // 🔥 エクスポート処理（Notion CSV: ハイブリッド出力版） 🔥
+    window.exportData = function(format) {
+        const d = new Date();
+        const dateStr = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
+        
+        if (format === 'yaml') {
+            const jsonDevices = db.devices.map(dev => ({ 
+                ...dev, 
+                tags: (dev.tags || "").split(',').map(t => t.trim()).filter(t => t),
+            }));
+            const unifiedData = {
+                devices: jsonDevices,
+                cables: db.cables,
+                locations: db.locations
+            };
+            
+            const yamlStr = jsyaml.dump(unifiedData, { lineWidth: -1 });
+            downloadFile(`topology_data_${dateStr}.yaml`, yamlStr, 'text/yaml');
+            
+        } else if (format === 'notion') {
+            const columns = ['Name', 'Role', 'Location', 'Tags', 'Ports & Connections'];
+            let csvContent = columns.join(',') + '\n';
+
+            db.devices.forEach(dev => {
+                const locName = dev.location_id ? getFullLocName(dev.location_id) : '';
+                const tags = dev.tags ? dev.tags.split(',').map(t => t.trim()).filter(t => t).join(', ') : '';
+                
+                const definedPorts = dev.ports || [];
+                const processedPortNames = new Set();
+                let activeLines = [];
+                let freePortNames = [];
+
+                // 1. 全ポートをチェックし、「接続済み」と「空き」に仕分ける
+                definedPorts.forEach(p => {
+                    processedPortNames.add(p.name);
+                    
+                    let connection = null;
+                    db.cables.forEach(c => {
+                        if (c.device_a_id === dev.id && c.port_a === p.name) {
+                            const peer = db.devices.find(x => x.id === c.device_b_id);
+                            connection = `↔ (${c.port_b || '-'}) ${peer ? peer.name : '不明'}`;
+                        } else if (c.device_b_id === dev.id && c.port_b === p.name) {
+                            const peer = db.devices.find(x => x.id === c.device_a_id);
+                            connection = `↔ (${c.port_a || '-'}) ${peer ? peer.name : '不明'}`;
+                        }
+                    });
+
+                    if (connection) {
+                        let meta = [];
+                        if (p.ip) meta.push(`IP:${p.ip}`);
+                        if (p.mac) meta.push(`MAC:${p.mac}`);
+                        let metaStr = meta.length > 0 ? `[${meta.join(', ')}] ` : '';
+                        activeLines.push(`🔗 ${p.name}: ${metaStr}${connection}`);
+                    } else {
+                        freePortNames.push(`[${p.name}]`);
+                    }
+                });
+
+                // 2. ケーブル情報にはあるが、ポート登録されていない野良ポートを拾う
+                db.cables.forEach(c => {
+                    if (c.device_a_id === dev.id && !processedPortNames.has(c.port_a)) {
+                         const peer = db.devices.find(x => x.id === c.device_b_id);
+                         activeLines.push(`⚠️ ${c.port_a || '-'}: ↔ (${c.port_b || '-'}) ${peer ? peer.name : '不明'}`);
+                    } else if (c.device_b_id === dev.id && !processedPortNames.has(c.port_b)) {
+                         const peer = db.devices.find(x => x.id === c.device_a_id);
+                         activeLines.push(`⚠️ ${c.port_b || '-'}: ↔ (${c.port_a || '-'}) ${peer ? peer.name : '不明'}`);
+                    }
+                });
+
+                // 3. 最終出力テキストの組み立て
+                let finalOutput = [];
+                if (activeLines.length > 0) {
+                    finalOutput.push("【Connected】");
+                    finalOutput.push(...activeLines);
+                }
+                if (freePortNames.length > 0) {
+                    if (finalOutput.length > 0) finalOutput.push(""); // セクション間の空行
+                    finalOutput.push("【Available】");
+                    finalOutput.push(freePortNames.join(" ")); // 横に並べる！
+                }
+                if (finalOutput.length === 0) finalOutput.push("ポートなし");
+
+                const row = [
+                    dev.name || '',
+                    dev.role || '',
+                    locName,
+                    tags,
+                    finalOutput.join('\n')
+                ];
+
+                csvContent += row.map(val => {
+                    let str = String(val);
+                    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+                        str = '"' + str.replace(/"/g, '""') + '"';
+                    }
+                    return str;
+                }).join(',') + '\n';
+            });
+            downloadFile(`notion_assets_${dateStr}.csv`, "\uFEFF" + csvContent, 'text/csv;charset=utf-8;');
+        }
+    };
+
+    document.getElementById('devicesSortUI').style.display = currentTab === 'devices' ? 'flex' : 'none';
+    document.getElementById('btnSortLocations').style.display = currentTab === 'locations' ? 'block' : 'none';
+    renderTable();
+</script>
+
+</body>
+</html>
