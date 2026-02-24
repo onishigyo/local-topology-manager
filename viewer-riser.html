@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Physical Riser Viewer (立面系統図)</title>
+    <script src="./lib/js-yaml.min.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6; --primary-hover: #2563eb;
+            --bg-color: #f3f4f6; --text-main: #1e293b;
+            --header-height: 60px;
+            --border-color: #e2e8f0;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg-color); margin: 0; color: var(--text-main); overflow: hidden; }
+        
+        .header { background-color: #1e293b; color: white; height: var(--header-height); padding: 0 20px; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 200; box-sizing: border-box; }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        .btn-hamburger { background: transparent; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 5px; border-radius: 4px; transition: 0.2s; width: 40px; height: 40px; }
+        .btn-hamburger:hover { background: rgba(255,255,255,0.1); }
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        #dataStatus { font-size: 0.9rem; font-weight: bold; padding: 4px 10px; border-radius: 4px; background: rgba(255,255,255,0.1); color: #cbd5e1; }
+        #dataStatus.loaded { color: #10b981; background: rgba(16, 185, 129, 0.2); }
+
+        #main-container { width: 100vw; height: calc(100vh - var(--header-height)); position: relative; display: flex; }
+        
+        #settings-sidebar {
+            position: absolute; top: 0; left: 0; width: 350px; height: 100%;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+            box-shadow: 4px 0 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100; display: flex; flex-direction: column; border-right: 1px solid var(--border-color);
+        }
+        #settings-sidebar.closed { transform: translateX(-100%); box-shadow: none; }
+        .sidebar-content { padding: 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-label { font-weight: bold; font-size: 0.95rem; }
+        input[type="file"] { padding: 8px; border: 1px dashed #cbd5e1; border-radius: 4px; background: #f8fafc; cursor: pointer; }
+        
+        .tags-wrapper { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; max-height: 200px; overflow-y: auto; background: #f8fafc; }
+        .tag-checkbox-label { display: inline-flex; align-items: center; gap: 4px; background: white; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; user-select: none; }
+        .tag-checkbox-label:has(input:checked) { background: #eff6ff; border-color: var(--primary); color: #1d4ed8; font-weight: bold; }
+        
+        .btn-primary { padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1rem; margin-top: auto; transition: 0.2s;}
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); }
+
+        #canvas-wrapper { flex-grow: 1; padding: 20px; overflow: auto; position: relative; background: #f8fafc; }
+        #building-container { position: relative; min-width: 1500px; border: 2px solid #94a3b8; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin: 0 auto; }
+        
+        #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        #floor-list { position: relative; z-index: 1; }
+        
+        .floor-row { display: flex; min-height: 250px; border-bottom: 1px solid #e2e8f0; position: relative; }
+        .floor-row:last-child { border-bottom: none; }
+        
+        .eps-zone { width: 150px; min-width: 150px; background: #f1f5f9; border-right: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; position: relative; }
+        .eps-label { writing-mode: vertical-rl; text-orientation: upright; color: #64748b; font-weight: bold; letter-spacing: 5px; opacity: 0.5; }
+        
+        .floor-zone { flex-grow: 1; padding: 100px 40px 40px; position: relative; display: flex; gap: 80px; align-items: flex-start; }
+        .floor-bg-label { position: absolute; top: 10px; right: 20px; font-size: 3rem; color: #e2e8f0; font-weight: bold; z-index: 0; pointer-events: none; opacity: 0.4;}
+        
+        .hop-column { display: flex; flex-direction: column; gap: 30px; align-items: center; position: relative; z-index: 10; }
+
+        .device { background: white; border: 2px solid #94a3b8; border-radius: 6px; padding: 10px; width: 150px; min-height: 60px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; transition: 0.2s;}
+        .device:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-color: var(--primary); }
+        .dev-name { font-size: 0.9rem; font-weight: bold; color: #1e293b; word-break: break-all;}
+        .dev-role { font-size: 0.75rem; color: #64748b; }
+        
+        .device.summary-cloud { border: 2px dashed #94a3b8; background: #f8fafc; color: #64748b; cursor: default; }
+        .device.summary-cloud:hover { transform: none; border-color: #94a3b8; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .cable-line { fill: none; stroke-width: 2.5px; stroke-linejoin: round; stroke-linecap: round; opacity: 0.85; transition: 0.2s;}
+        .cable-line:hover { stroke-width: 6px; opacity: 1; cursor: pointer; pointer-events: auto; filter: drop-shadow(0 0 4px rgba(0,0,0,0.4));}
+        .cable-line.dashed { stroke: #94a3b8 !important; stroke-dasharray: 6 6; stroke-width: 2px; }
+        .cable-line.dashed:hover { stroke-width: 4px; }
+
+        .port-dot { fill: white; stroke-width: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <button class="btn-hamburger" onclick="toggleSidebar()">☰</button>
+        <h1>🏢 Physical Riser Viewer (立面系統図)</h1>
+    </div>
+    <div id="dataStatus">🔴 データ未読込</div>
+</div>
+
+<div id="main-container">
+    <div id="settings-sidebar">
+        <div class="sidebar-content">
+            <div class="control-group">
+                <label class="control-label">1. Data File (YAML)</label>
+                <input type="file" id="fileInput" accept=".yaml,.yml">
+            </div>
+            <div class="control-group">
+                <label class="control-label">2. Target Tags (対象設備)</label>
+                <div class="tags-wrapper" id="tagContainer">
+                    <span style="color: #94a3b8; font-size: 0.85rem;">読込後に表示されます</span>
+                </div>
+            </div>
+            <div class="control-group">
+                <label class="control-label">3. Max Depth (深さ制限)</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+                    <input type="number" id="depthInput" value="3" min="1" max="50" style="width: 80px; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                    <span style="font-size: 0.85rem; color: #64748b; font-weight: bold;">ホップ</span>
+                </div>
+                <label style="margin-top: 5px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" id="noLimitInput" onchange="document.getElementById('depthInput').disabled = this.checked">制限しない
+                </label>
+            </div>
+            <button class="btn-primary" onclick="renderBuilding()">✨ 描画更新</button>
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <div id="building-container" style="display: none;">
+            <svg id="svg-layer"></svg>
+            <div id="floor-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db = { locations: [], devices: [], cables: [] };
+    let globalAdj = new Map();
+    let deviceDistances = new Map();
+    let virtualCablesToDraw = [];
+
+    const lineColors = ['#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#ea580c', '#65a30d', '#0891b2'];
+
+    function toggleSidebar() { document.getElementById('settings-sidebar').classList.toggle('closed'); }
+
+    // アイコン取得関数（既存Viewerより移植）
+    function getIcon(role) {
+        const r = role || "";
+        if (r.includes("Firewall")) return "🛡️";
+        if (r.includes("Switch") || r.includes("HUB")) return "🔀";
+        if (r.includes("AP") || r.includes("Wireless")) return "📡";
+        if (r.includes("Router") || r.includes("ONU") || r.includes("External") || r.includes("Gateway")) return "🌐";
+        if (r.includes("Server")) return "🖥️";
+        if (r.includes("Controller")) return "⚙️";
+        return "📦"; 
+    }
+
+    document.getElementById('fileInput').addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            db = jsyaml.load(text);
+            const statusEl = document.getElementById('dataStatus');
+            statusEl.innerText = `🟢 読込完了 (${db.devices?.length || 0} Devices)`;
+            statusEl.classList.add('loaded');
+            
+            calculateAbsoluteDistances();
+            updateTagUI(); 
+        } catch (e) {
+            alert("読み込みエラー: " + e.message);
+        }
+    });
+
+    function calculateAbsoluteDistances() {
+        deviceDistances.clear();
+        globalAdj.clear();
+        if (!db.devices || !db.cables) return;
+
+        db.devices.forEach(d => { globalAdj.set(d.id, new Set()); deviceDistances.set(d.id, 999); });
+        db.cables.forEach(c => {
+            if (globalAdj.has(c.device_a_id) && globalAdj.has(c.device_b_id)) {
+                globalAdj.get(c.device_a_id).add(c.device_b_id);
+                globalAdj.get(c.device_b_id).add(c.device_a_id);
+            }
+        });
+
+        let roots = db.devices.filter(d => (d.role || "") === "ONU").map(d => d.id);
+        if (!roots.length) roots = db.devices.filter(d => (d.role || "") === "External Router").map(d => d.id);
+        if (!roots.length) roots = db.devices.filter(d => (d.role || "").match(/External|Gateway/i)).map(d => d.id);
+        if (!roots.length && db.devices.length > 0) roots = [db.devices[0].id];
+
+        const queue = [];
+        roots.forEach(r => { deviceDistances.set(r, 0); queue.push(r); });
+
+        while (queue.length > 0) {
+            const u = queue.shift();
+            globalAdj.get(u).forEach(v => {
+                if (deviceDistances.get(v) === 999) {
+                    deviceDistances.set(v, deviceDistances.get(u) + 1);
+                    queue.push(v);
+                }
+            });
+        }
+    }
+
+    function updateTagUI() {
+        const container = document.getElementById('tagContainer');
+        if (!db.devices || !db.devices.length) return;
+        const allTags = new Set();
+        let hasUntagged = false;
+        db.devices.forEach(d => { 
+            if (d.tags && Array.isArray(d.tags) && d.tags.length > 0) d.tags.forEach(t => allTags.add(t)); 
+            else hasUntagged = true;
+        });
+        container.innerHTML = '';
+        Array.from(allTags).sort().forEach(tag => {
+            container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="${tag}" class="tag-checkbox"> ${tag}</label>`;
+        });
+        if (hasUntagged) container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="__UNTAGGED__" class="tag-checkbox"> <i>(Untagged)</i></label>`;
+    }
+
+    function getFloorWeight(name) {
+        if (!name) return 0;
+        const upper = name.toUpperCase();
+        if (upper.includes('PH')) return 10000;
+        if (upper.includes('RF')) return 9999;
+        const bMatch = upper.match(/B(\d+)/);
+        if (bMatch) return -parseInt(bMatch[1], 10);
+        const numMatch = upper.match(/(\d+)/);
+        if (numMatch) return parseInt(numMatch[1], 10);
+        return 0;
+    }
+
+    function getAllDescendants(parentId) {
+        let ids = [parentId];
+        db.locations.filter(l => l.parent_id === parentId).forEach(child => {
+            ids = ids.concat(getAllDescendants(child.id));
+        });
+        return ids;
+    }
+
+    function renderBuilding() {
+        const activeTags = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(cb => cb.value);
+        if (activeTags.length === 0) return alert("少なくとも1つのタグを選択してください。");
+
+        const filteredDevices = db.devices.filter(d => {
+            const isUntagged = !d.tags || !Array.isArray(d.tags) || d.tags.length === 0;
+            if (isUntagged && activeTags.includes('__UNTAGGED__')) return true;
+            if (!isUntagged && d.tags.some(tag => activeTags.includes(tag))) return true;
+            return false;
+        });
+
+        const uniqueMap = new Map(filteredDevices.map(d => [d.id, d]));
+        const deviceIds = new Set(uniqueMap.keys());
+
+        const isNoLimit = document.getElementById('noLimitInput').checked;
+        const maxDepth = isNoLimit ? 999 : (parseInt(document.getElementById('depthInput').value) || 3);
+        
+        const visibleNodes = new Set();
+        deviceIds.forEach(id => { if (deviceDistances.get(id) <= maxDepth) visibleNodes.add(id); });
+
+        const summaryMap = new Map();
+        if (!isNoLimit) {
+            deviceIds.forEach(id => {
+                if (visibleNodes.has(id)) return;
+                let current = id;
+                let ancestorFound = null;
+                
+                while (deviceDistances.get(current) > 0 && deviceDistances.get(current) !== 999) {
+                    const parents = Array.from(globalAdj.get(current)).filter(n => deviceDistances.get(n) === deviceDistances.get(current) - 1);
+                    if (!parents.length) break;
+                    const parent = parents[0];
+                    if (visibleNodes.has(parent)) { ancestorFound = parent; break; }
+                    current = parent;
+                }
+                if (ancestorFound) {
+                    if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
+                    const d = uniqueMap.get(id);
+                    const tagName = (d.tags && d.tags.length > 0) ? d.tags[0] : "Untagged";
+                    summaryMap.get(ancestorFound)[tagName] = (summaryMap.get(ancestorFound)[tagName] || 0) + 1;
+                }
+            });
+        }
+
+        const virtualDevices = [];
+        virtualCablesToDraw = []; 
+        
+        summaryMap.forEach((sums, pId) => {
+            const parentDev = uniqueMap.get(pId);
+            for (const [tagName, count] of Object.entries(sums)) {
+                const sId = `sum_${pId}_${tagName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                virtualDevices.push({
+                    id: sId, name: `☁️ ${tagName} (x${count})`, role: 'Summary',
+                    location_id: parentDev.location_id, isSummary: true, hop: deviceDistances.get(pId) + 1
+                });
+                virtualCablesToDraw.push({ device_a_id: pId, port_a: '', device_b_id: sId, port_b: '', isSummary: true });
+            }
+        });
+
+        const renderableDevices = Array.from(visibleNodes).map(id => uniqueMap.get(id)).concat(virtualDevices);
+        
+        const container = document.getElementById('floor-list');
+        container.innerHTML = '';
+        document.getElementById('building-container').style.display = 'block';
+        
+        let floors = db.locations.filter(loc => !loc.parent_id);
+        floors.sort((a, b) => getFloorWeight(b.name) - getFloorWeight(a.name));
+
+        const assignedDeviceIds = new Set();
+
+        floors.forEach(floor => {
+            const childLocIds = getAllDescendants(floor.id);
+            let floorDevices = renderableDevices.filter(d => childLocIds.includes(d.location_id));
+            floorDevices.forEach(d => assignedDeviceIds.add(d.id));
+            if (floorDevices.length === 0) return;
+            createFloorRow(container, floor.name, floorDevices);
+        });
+
+        const orphanedDevices = renderableDevices.filter(d => !assignedDeviceIds.has(d.id));
+        if (orphanedDevices.length > 0) {
+            createFloorRow(container, "未配置/外部", orphanedDevices, true);
+        }
+
+        toggleSidebar(); 
+        setTimeout(() => drawCables(visibleNodes), 200);
+    }
+
+    function createFloorRow(container, floorName, devices, isUnassigned = false) {
+        const row = document.createElement('div');
+        row.className = 'floor-row';
+        if (isUnassigned) row.style.backgroundColor = "#f8fafc";
+        
+        const eps = document.createElement('div');
+        eps.className = 'eps-zone';
+        eps.innerHTML = `<div class="eps-label">${isUnassigned ? 'WAN/外' : '幹線/EPS'}</div>`;
+        
+        const zone = document.createElement('div');
+        zone.className = 'floor-zone';
+        zone.innerHTML = `<div class="floor-bg-label">${floorName}</div>`;
+
+        const hopGroups = {};
+        devices.forEach(dev => {
+            const hop = dev.isSummary ? dev.hop : deviceDistances.get(dev.id);
+            if (!hopGroups[hop]) hopGroups[hop] = [];
+            hopGroups[hop].push(dev);
+        });
+
+        const sortedHops = Object.keys(hopGroups).map(Number).sort((a, b) => a - b);
+        sortedHops.forEach(hop => {
+            const col = document.createElement('div');
+            col.className = 'hop-column';
+            col.setAttribute('data-col-hop', hop); 
+            
+            hopGroups[hop].forEach(dev => {
+                const devEl = document.createElement('div');
+                devEl.className = dev.isSummary ? 'device summary-cloud' : 'device';
+                devEl.id = `dev-${dev.id}`;
+                devEl.setAttribute('data-hop', hop);
+                
+                // 既存Viewerに合わせた表示形式
+                const icon = dev.isSummary ? '' : getIcon(dev.role);
+                const roleText = dev.isSummary ? '' : `[${dev.role || 'Role未定'}]`;
+                
+                devEl.innerHTML = `
+                    <div class="dev-name">${icon} ${dev.name}</div>
+                    <div class="dev-role">${roleText}</div>
+                `;
+                col.appendChild(devEl);
+            });
+            zone.appendChild(col);
+        });
+
+        row.appendChild(eps);
+        row.appendChild(zone);
+        container.appendChild(row);
+    }
+
+    function drawCables(visibleNodes) {
+        const svg = document.getElementById('svg-layer');
+        svg.innerHTML = ''; 
+        const bContainer = document.getElementById('building-container');
+        const bRect = bContainer.getBoundingClientRect();
+        
+        const portCounters = {};
+        const ductUsage = { vertical: {}, ceiling: {}, eps: 0 };
+
+        function getDuctOffset(ductType, key) {
+            if (ductType === 'eps') return (ductUsage.eps++) * 6;
+            if (!ductUsage[ductType][key]) ductUsage[ductType][key] = 0;
+            return (ductUsage[ductType][key]++) * 6;
+        }
+
+        const validRealCables = db.cables.filter(c => visibleNodes.has(c.device_a_id) && visibleNodes.has(c.device_b_id));
+        const allCablesToDraw = validRealCables.concat(virtualCablesToDraw);
+
+        allCablesToDraw.forEach((cable, index) => {
+            const elA = document.getElementById(`dev-${cable.device_a_id}`);
+            const elB = document.getElementById(`dev-${cable.device_b_id}`);
+            if (!elA || !elB) return;
+
+            if (!portCounters[cable.device_a_id]) portCounters[cable.device_a_id] = { left: 0, right: 0 };
+            if (!portCounters[cable.device_b_id]) portCounters[cable.device_b_id] = { left: 0, right: 0 };
+
+            const hopA = parseInt(elA.getAttribute('data-hop') || 0);
+            const hopB = parseInt(elB.getAttribute('data-hop') || 0);
+            
+            const rectA = elA.getBoundingClientRect();
+            const rectB = elB.getBoundingClientRect();
+            const floorA = elA.closest('.floor-row').getBoundingClientRect();
+            const floorB = elB.closest('.floor-row').getBoundingClientRect();
+            
+            const isSameFloor = elA.closest('.floor-row') === elB.closest('.floor-row');
+            const strokeColor = cable.isSummary ? '#94a3b8' : lineColors[index % lineColors.length];
+            
+            let pathD = '';
+            let startX, startY, endX, endY;
+
+            let leftDev, rightDev, leftId, rightId, leftRect, rightRect;
+            if (rectA.left <= rectB.left) {
+                leftDev = elA; rightDev = elB; leftRect = rectA; rightRect = rectB; leftId = cable.device_a_id; rightId = cable.device_b_id;
+            } else {
+                leftDev = elB; rightDev = elA; leftRect = rectB; rightRect = rectA; leftId = cable.device_b_id; rightId = cable.device_a_id;
+            }
+
+            if (isSameFloor) {
+                if (leftDev.closest('.hop-column') === rightDev.closest('.hop-column')) {
+                    startX = leftRect.right - bRect.left;
+                    startY = leftRect.top - bRect.top + 15 + (portCounters[leftId].right++ * 10);
+                    endX = rightRect.right - bRect.left;
+                    endY = rightRect.top - bRect.top + 15 + (portCounters[rightId].right++ * 10);
+                    
+                    const ductKey = Math.floor(leftRect.right);
+                    const vOffset = getDuctOffset('vertical', ductKey);
+                    const gapX = Math.max(startX, endX) + 20 + vOffset;
+                    
+                    pathD = `M ${startX} ${startY} H ${gapX} V ${endY} H ${endX}`;
+
+                } else if (Math.abs(hopA - hopB) === 1 || !rightDev.closest('.hop-column').previousElementSibling || leftDev.closest('.hop-column') === rightDev.closest('.hop-column').previousElementSibling) {
+                    startX = leftRect.right - bRect.left;
+                    startY = leftRect.top - bRect.top + 15 + (portCounters[leftId].right++ * 10);
+                    endX = rightRect.left - bRect.left;
+                    endY = rightRect.top - bRect.top + 15 + (portCounters[rightId].left++ * 10);
+
+                    const ductKey = Math.floor((startX + endX) / 2);
+                    const vOffset = getDuctOffset('vertical', ductKey);
+                    const midX = ((startX + endX) / 2) + (vOffset % 20); 
+                    
+                    pathD = `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
+
+                } else {
+                    startX = leftRect.right - bRect.left;
+                    startY = leftRect.top - bRect.top + 15 + (portCounters[leftId].right++ * 10);
+                    endX = rightRect.left - bRect.left;
+                    endY = rightRect.top - bRect.top + 15 + (portCounters[rightId].left++ * 10);
+
+                    const leftDuctKey = Math.floor(leftRect.right);
+                    const rightDuctKey = Math.floor(rightRect.left);
+                    const vOffset1 = getDuctOffset('vertical', leftDuctKey);
+                    const vOffset2 = getDuctOffset('vertical', rightDuctKey);
+                    
+                    const ceilingKey = Math.floor(floorA.top);
+                    const hOffset = getDuctOffset('ceiling', ceilingKey);
+
+                    const gapLeftX = startX + 15 + vOffset1; 
+                    const gapRightX = endX - 15 - vOffset2;
+                    const ceilingBusY = floorA.top - bRect.top + 15 + hOffset; 
+
+                    pathD = `M ${startX} ${startY} H ${gapLeftX} V ${ceilingBusY} H ${gapRightX} V ${endY} H ${endX}`;
+                }
+            } else {
+                startX = leftRect.left - bRect.left;
+                startY = leftRect.top - bRect.top + 15 + (portCounters[leftId].left++ * 10);
+                endX = rightRect.left - bRect.left;
+                endY = rightRect.top - bRect.top + 15 + (portCounters[rightId].left++ * 10);
+
+                const ceilingKeyA = Math.floor(leftDev.closest('.floor-row').getBoundingClientRect().top);
+                const ceilingKeyB = Math.floor(rightDev.closest('.floor-row').getBoundingClientRect().top);
+                const hOffsetA = getDuctOffset('ceiling', ceilingKeyA);
+                const hOffsetB = getDuctOffset('ceiling', ceilingKeyB);
+                
+                const leftDuctKey1 = Math.floor(leftRect.left);
+                const leftDuctKey2 = Math.floor(rightRect.left);
+                const vOffset1 = getDuctOffset('vertical', leftDuctKey1);
+                const vOffset2 = getDuctOffset('vertical', leftDuctKey2);
+
+                const ceilingBusYA = leftDev.closest('.floor-row').getBoundingClientRect().top - bRect.top + 15 + hOffsetA;
+                const ceilingBusYB = rightDev.closest('.floor-row').getBoundingClientRect().top - bRect.top + 15 + hOffsetB;
+                
+                const epsX = 30 + getDuctOffset('eps', 'main'); 
+                const gapXA = startX - 15 - vOffset1;
+                const gapXB = endX - 15 - vOffset2;
+
+                pathD = `M ${startX} ${startY} H ${gapXA} V ${ceilingBusYA} H ${epsX} V ${ceilingBusYB} H ${gapXB} V ${endY} H ${endX}`;
+            }
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('class', cable.isSummary ? 'cable-line dashed' : 'cable-line');
+            if (!cable.isSummary) path.setAttribute('stroke', strokeColor);
+            
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = cable.isSummary ? `[Hidden Devices]` : `[${cable.port_a || 'Port'}] ↔ [${cable.port_b || 'Port'}]`;
+            path.appendChild(title);
+
+            const dotStart = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            dotStart.setAttribute('cx', startX); dotStart.setAttribute('cy', startY); dotStart.setAttribute('r', 3);
+            dotStart.setAttribute('class', 'port-dot'); dotStart.setAttribute('stroke', strokeColor);
+
+            const dotEnd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            dotEnd.setAttribute('cx', endX); dotEnd.setAttribute('cy', endY); dotEnd.setAttribute('r', 3);
+            dotEnd.setAttribute('class', 'port-dot'); dotEnd.setAttribute('stroke', strokeColor);
+
+            const hoverPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            hoverPath.setAttribute('d', pathD);
+            hoverPath.setAttribute('class', 'cable-line');
+            hoverPath.setAttribute('stroke', 'transparent');
+            hoverPath.setAttribute('stroke-width', '15');
+            hoverPath.style.opacity = '0';
+            
+            hoverPath.addEventListener('mouseenter', () => path.style.strokeWidth = '6px');
+            hoverPath.addEventListener('mouseleave', () => path.style.strokeWidth = '');
+
+            svg.appendChild(path);
+            svg.appendChild(hoverPath);
+            svg.appendChild(dotStart);
+            svg.appendChild(dotEnd);
+        });
+
+        svg.style.height = bContainer.scrollHeight + 'px';
+    }
+
+    window.addEventListener('resize', () => { if(document.querySelectorAll('.device').length > 0) drawCables(new Set(Array.from(document.querySelectorAll('.device:not(.summary-cloud)')).map(el => el.id.replace('dev-','')))); });
+</script>
+</body>
+</html>
