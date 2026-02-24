@@ -5,7 +5,7 @@
 ![Zero Dependency](https://img.shields.io/badge/Dependencies-Zero-success)
 ![Vanilla JS](https://img.shields.io/badge/Tech-Vanilla_JS-yellow)
 
-**🚀 Live Demo: [Try the Editor](https://onishigyo.github.io/local-topology-manager/editor.html) | [Try the Viewer](https://onishigyo.github.io/local-topology-manager/viewer.html)**
+**🚀 Live Demo: [Try the Editor](https://onishigyo.github.io/local-topology-manager/editor.html) | [Try the Viewer](https://onishigyo.github.io/local-topology-manager/viewer.html) | [Try the Riser Viewer (Beta)](https://onishigyo.github.io/local-topology-manager/viewer-riser.html)**
 
 A Zero-dependency, Air-gap Ready, Local-first Physical Network Topology Editor & Viewer.
 
@@ -30,7 +30,11 @@ Maintaining physical network topologies (Devices, Cables, Locations) usually req
 - **Hop-based Depth Control:** Limit the visualization depth by hop count, keeping large physical networks clean and readable.
 - **Intuitive Canvas:** Smooth zoom & pan controls targeting the mouse cursor for easy navigation. Click any device to see connected ports and IP details.
 
-#### 3. 📓 Optimized Export for Notion
+#### 3. 🏢 Physical Riser Viewer (`viewer-riser.html`) [Beta]
+- Generates a physical riser diagram (elevation drawing) to visualize inter-floor backbones and real-world cable routing.
+- Solves the "spaghetti wiring" problem by implementing realistic "ceiling-bus" and "vertical-duct" routing algorithms, avoiding overlapping cables and intersecting boxes.
+
+#### 4. 📓 Optimized Export for Notion
 - Generates perfectly formatted CSVs for Notion databases.
 - **Hybrid Display:** Connected ports are listed vertically with details, while available ports are grouped horizontally in a compact "tag" style, keeping your Notion tables clean and highly readable.
 
@@ -52,7 +56,7 @@ You can try it out immediately without installing anything!
 2. Open `editor.html` in your web browser (Chrome/Edge/Safari).
 3. Click **"📂 Load YAML File"** and select `sample_project.yaml`.
 4. Edit the devices, ports, or cables, then click **"💾 Export YAML"** to save your changes.
-5. Open `viewer.html` in your browser, load the saved YAML, and click **"✨ Render Topology"**.
+5. Open either `viewer.html` or `viewer-riser.html` in your browser, load the saved YAML, and click **"✨ Render Topology"**.
 
 ### 🌍 Host as a Web App (GitHub Pages)
 
@@ -91,6 +95,8 @@ locations:
     parent_id: null
 ```
 
+---
+
 ## 日本語ドキュメント
 
 ### 💡 開発の背景
@@ -110,7 +116,11 @@ locations:
 - **ホップ数による深さ制限:** 起点から何台先まで描画するか（ホップ数）を制御可能。規模の大きなネットワーク構成でも見やすく保つことができます。
 - マウスカーソルを中心に拡大・縮小できる、直感的で滑らかなキャンバス操作を実装しています。
 
-#### 3. 📓 Notionへのシームレスな出力（ハイブリッド表示）
+#### 3. 🏢 物理・立面系統図ビューア (`viewer-riser.html`) [Beta]
+- 実際の建築設備における「縦幹線（ライザー）と各階への配線ルート」を直感的に可視化する物理系統ビューアです。
+- 現実のケーブルラックやダクト配線を模倣した独自アルゴリズムにより、線が機器を貫通するカオス状態（スパゲッティ配線）を自動で回避し、図面としての美しさと実用性を両立しています。
+
+#### 4. 📓 Notionへのシームレスな出力（ハイブリッド表示）
 - Notion等の資産管理データベースへインポートするためのCSVを出力します。
 - **ハイブリッド表示:** 接続済みポートは詳細に、空きポートは横並びの「タグ形式」で出力することで、Notion上での視認性と管理性を美しく両立しています。
 
@@ -132,7 +142,7 @@ locations:
 2. ブラウザで `editor.html` を開きます。
 3. **「📂 Load YAML File」** をクリックし、同梱の `sample_project.yaml` を読み込みます。
 4. 機器や配線、ポート情報を自由に追加・編集し、**「💾 Export YAML」** で手元に保存します。
-5. ブラウザで `viewer.html` を開き、保存したYAMLを読み込んで **「✨ トポロジーを描画する」** をクリックします。
+5. ブラウザで `viewer.html` または `viewer-riser.html` を開き、保存したYAMLを読み込んで **「✨ トポロジーを描画する」** や **「✨ 描画更新」** をクリックします。
 
 ### 🌍 チーム向けにWebアプリとして公開する (GitHub Pages)
 
