@@ -11,7 +11,7 @@ A Zero-dependency, Air-gap Ready, Local-first Physical Network Topology Editor &
 
 (日本語のドキュメントは下部にあります 👇)
 
-## 🇬🇧 English Documentation
+## English Documentation
 
 ### 💡 Concept
 Maintaining physical network topologies (Devices, Cables, Locations) usually requires heavy infrastructure like NetBox or proprietary SaaS. However, for small to medium projects, managing servers or databases often becomes a technical debt.
@@ -91,7 +91,7 @@ locations:
     parent_id: null
 ```
 
-## 🇯🇵 日本語ドキュメント
+## 日本語ドキュメント
 
 ### 💡 開発の背景
 通常、物理ネットワーク構成（機器、結線、設置場所）を管理するにはNetBoxのような重厚なサーバーを立てるか、SaaSを契約する必要がありますが、小規模〜中規模のプロジェクトにおいてはそれ自体が技術的負債になりがちです。
