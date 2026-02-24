@@ -1,3 +1,9 @@
+### Editor
+- [ ] XXXX
+
 ### Viewer
 - [ ] ホップ計算のロジックで独立タイプのデバイス（IoT GWなど）を考慮する
 - [ ] Floor機能を削除する
+
+### Riser Viewer
+- [ ] XXXX
