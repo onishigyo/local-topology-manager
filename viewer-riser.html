@@ -94,7 +94,7 @@
                 <input type="file" id="fileInput" accept=".yaml,.yml">
             </div>
             <div class="control-group">
-                <label class="control-label">2. Target Tags (対象設備)</label>
+                <label class="control-label">2. Target Systems (設備システム)</label>
                 <div class="tags-wrapper" id="tagContainer">
                     <span style="color: #94a3b8; font-size: 0.85rem;">読込後に表示されます</span>
                 </div>
@@ -364,15 +364,17 @@
                 
                 // ★ 部屋・詳細情報をカード内にバッジ表示するロジック ★
                 let subLocStr = "";
-                if (!dev.isSummary && dev.location_id) {
-                    const lineage = getLineage(dev.location_id);
-                    // lineage[0]はフロア名なので除外。lineage[1]以降（部屋、詳細）を取得
-                    const subLocs = lineage.slice(1).map(id => {
-                        const l = db.locations.find(x => x.id === id);
-                        return l ? l.name : id;
-                    });
-                    if (subLocs.length > 0) {
-                        subLocStr = `<div style="font-size: 0.7rem; color: #3b82f6; margin-top: 6px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block; word-break: break-word; border: 1px solid #bfdbfe;">📍 ${subLocs.join(' > ')}</div>`;
+                if (!dev.isSummary) {
+                    const sysStr = dev.system ? `<div style="font-size: 0.7rem; color: #10b981; margin-top: 4px; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #d1fae5; font-weight: bold;">⚙️ ${dev.system}</div><br/>` : "";
+                    if (dev.location_id) {
+                        const lineage = getLineage(dev.location_id);
+                        const subLocs = lineage.slice(1).map(id => {
+                            const l = db.locations.find(x => x.id === id);
+                            return l ? l.name : id;
+                        });
+                        if (subLocs.length > 0 || sysStr) {
+                            subLocStr = `<div style="margin-top:6px;">${sysStr}<div style="font-size: 0.7rem; color: #3b82f6; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #bfdbfe;">📍 ${subLocs.join(' > ') || 'フロア直下'}</div></div>`;
+                        }
                     }
                 }
                 

@@ -44,17 +44,9 @@
         .search-input { background-color: #f8fafc; cursor: pointer; }
         .search-input:focus { background-color: #fff; cursor: text; }
         
-        .tag-container { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; background: #fff; min-height: 32px; align-items: center; cursor: text; transition: 0.2s; }
-        .tag-container:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-        .tag-pill { background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 4px; font-weight: 500; }
-        .tag-remove { cursor: pointer; color: #94a3b8; font-weight: bold; line-height: 1; margin-top: -2px; }
-        .tag-remove:hover { color: #ef4444; }
-        .tag-input { border: none !important; outline: none !important; flex-grow: 1; min-width: 60px; padding: 2px 0 !important; font-size: 0.85rem; box-shadow: none !important; background: transparent; }
-        
         .empty-state { text-align: center; color: #6b7280; padding: 40px; font-style: italic; }
         .tree-dot { color: #10b981; font-weight: bold; margin-right: 5px; font-size: 1.1rem; }
 
-        /* Modal Styles */
         #modalOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
@@ -86,6 +78,7 @@
         <div style="flex-grow: 1; text-align: right; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
             <div id="devicesSortUI" style="display: flex; gap: 5px; align-items: center;">
                 <select id="deviceSortKey" style="width: auto; padding: 4px;">
+                    <option value="system">System順</option>
                     <option value="location">Location順</option>
                     <option value="role">Role順</option>
                     <option value="name">Name順</option>
@@ -113,22 +106,10 @@
 
 <div id="modalOverlay">
     <div class="modal-content">
-        <div class="modal-header">
-            <h2 id="modalTitle">Port Management</h2>
-            <button class="modal-close" onclick="closePortModal()">×</button>
-        </div>
-        <div style="margin-bottom: 10px; text-align: right;">
-            <button class="btn btn-primary" style="padding: 6px 10px; font-size: 0.85rem;" onclick="addPortRow()">➕ ポートを追加</button>
-        </div>
+        <div class="modal-header"><h2 id="modalTitle">Port Management</h2><button class="modal-close" onclick="closePortModal()">×</button></div>
+        <div style="margin-bottom: 10px; text-align: right;"><button class="btn btn-primary" style="padding: 6px 10px; font-size: 0.85rem;" onclick="addPortRow()">➕ ポートを追加</button></div>
         <table id="portTable">
-            <thead>
-                <tr>
-                    <th>Port Name</th>
-                    <th>IP Address</th>
-                    <th>MAC Address</th>
-                    <th style="width: 50px; text-align: center;">🗑️</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Port Name</th><th>IP Address</th><th>MAC Address</th><th style="width: 50px; text-align: center;">🗑️</th></tr></thead>
             <tbody id="portTableBody"></tbody>
         </table>
         <div style="margin-top: 20px; text-align: right; display: flex; gap: 10px; justify-content: flex-end;">
@@ -141,18 +122,18 @@
 <datalist id="roleList"></datalist>
 <datalist id="deviceList"></datalist>
 <datalist id="dynamicPortList"></datalist>
-<datalist id="tagList"></datalist>
+<datalist id="systemList"></datalist>
 
 <script>
+    // ★ tags を廃止し、system に変更
     const schemas = {
-        devices: ['id', 'name', 'role', 'location_id', 'tags', 'ports'],
+        devices: ['id', 'name', 'role', 'location_id', 'system', 'ports'],
         cables: ['device_a_id', 'port_a', 'device_b_id', 'port_b'],
         locations: ['id', 'name', 'parent_id']
     };
 
     let db = { devices: [], cables: [], locations: [] };
     let currentTab = 'devices';
-    let focusAfterRender = null;
     let editingDeviceIndex = null;
     let tempPorts = [];
 
@@ -165,11 +146,18 @@
             const data = jsyaml.load(text);
             
             if (data.devices) {
-                data.devices = data.devices.map(d => ({
-                    ...d,
-                    tags: Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || ""),
-                    ports: d.ports || [] 
-                }));
+                data.devices = data.devices.map(d => {
+                    // ★ マイグレーション処理：古いtagsが存在すれば、最初の1つをsystemに変換
+                    let sys = d.system || "";
+                    if (!sys && d.tags) {
+                        let t = Array.isArray(d.tags) ? d.tags : d.tags.split(',');
+                        if (t.length > 0 && t[0].trim() !== "") sys = t[0].trim();
+                    }
+                    return {
+                        id: d.id, name: d.name, role: d.role, location_id: d.location_id,
+                        system: sys, ports: d.ports || []
+                    };
+                });
             }
             
             db.devices = data.devices || [];
@@ -233,9 +221,7 @@
         }).join(' / ');
     }
 
-    function getLocDepth(locId) {
-        return getLineage(locId).length - 1; 
-    }
+    function getLocDepth(locId) { return getLineage(locId).length - 1; }
 
     function sortLocationsTree() {
         const roots = db.locations.filter(l => !l.parent_id);
@@ -264,15 +250,17 @@
     function sortDevices() {
         const key = document.getElementById('deviceSortKey').value;
         db.devices.sort((a, b) => {
-            if (key === 'location') {
-                const locA = getFullLocName(a.location_id);
-                const locB = getFullLocName(b.location_id);
+            if (key === 'system') {
+                const sA = a.system || ''; const sB = b.system || '';
+                if (sA !== sB) return sA.localeCompare(sB);
+                return (a.name || '').localeCompare(b.name || '');
+            } else if (key === 'location') {
+                const locA = getFullLocName(a.location_id); const locB = getFullLocName(b.location_id);
                 const cmp = compareFloorPaths(locA, locB);
                 if (cmp !== 0) return cmp;
                 return (a.name || '').localeCompare(b.name || '');
             } else if (key === 'role') {
-                const rA = a.role || '';
-                const rB = b.role || '';
+                const rA = a.role || ''; const rB = b.role || '';
                 if (rA !== rB) return rA.localeCompare(rB);
                 return (a.name || '').localeCompare(b.name || '');
             } else if (key === 'name') {
@@ -295,33 +283,21 @@
         const deviceLabels = db.devices.map(d => `<option value="${getDeviceLabel(d)}">`).join('');
         document.getElementById('deviceList').innerHTML = deviceLabels;
 
-        // ★ タグの全リストを収集して datalist に反映 ★
-        const tags = new Set();
-        db.devices.forEach(d => {
-            if (d.tags) {
-                d.tags.split(',').forEach(t => {
-                    const trimmed = t.trim();
-                    if (trimmed) tags.add(trimmed);
-                });
-            }
-        });
-        document.getElementById('tagList').innerHTML = [...tags].sort().map(t => `<option value="${t}">`).join('');
+        const systems = [...new Set(db.devices.map(d => d.system).filter(s => s))].sort();
+        document.getElementById('systemList').innerHTML = systems.map(s => `<option value="${s}">`).join('');
     }
 
     window.updatePortDatalist = function(deviceId) {
         const dataList = document.getElementById('dynamicPortList');
         dataList.innerHTML = ''; 
         if (!deviceId) return;
-        
         const dev = db.devices.find(d => d.id === deviceId);
-        if (dev && dev.ports) {
-            dataList.innerHTML = dev.ports.map(p => `<option value="${p.name}">`).join('');
-        }
+        if (dev && dev.ports) dataList.innerHTML = dev.ports.map(p => `<option value="${p.name}">`).join('');
     };
 
     window.updateCell = function(index, key, value) {
         db[currentTab][index][key] = value;
-        if (key === 'role' || key === 'name' || key === 'location_id') updateDatalists();
+        if (['role', 'name', 'location_id', 'system'].includes(key)) updateDatalists();
         if (currentTab === 'locations' && (key === 'name' || key === 'parent_id')) renderTable();
     };
 
@@ -333,82 +309,28 @@
             if (level === 1) newLoc = "";
         }
         db.devices[index].location_id = newLoc;
-        updateDatalists();
-        renderTable(); 
+        updateDatalists(); renderTable(); 
     };
 
     window.updateCableByLabel = function(index, key, label) {
         const matchedDevice = db.devices.find(d => getDeviceLabel(d) === label);
-        if (matchedDevice) {
-            db.cables[index][key] = matchedDevice.id;
-        } else {
-            db.cables[index][key] = ""; 
-        }
+        if (matchedDevice) db.cables[index][key] = matchedDevice.id;
+        else db.cables[index][key] = ""; 
         renderTable();
     };
 
     window.swapCable = function(index) {
-        const tDev = db.cables[index].device_a_id;
-        db.cables[index].device_a_id = db.cables[index].device_b_id;
-        db.cables[index].device_b_id = tDev;
-        const tPort = db.cables[index].port_a;
-        db.cables[index].port_a = db.cables[index].port_b;
-        db.cables[index].port_b = tPort;
+        const tDev = db.cables[index].device_a_id; db.cables[index].device_a_id = db.cables[index].device_b_id; db.cables[index].device_b_id = tDev;
+        const tPort = db.cables[index].port_a; db.cables[index].port_a = db.cables[index].port_b; db.cables[index].port_b = tPort;
         renderTable();
     };
 
     window.moveRowUp = function(index) {
-        if (index > 0) {
-            const temp = db[currentTab][index - 1];
-            db[currentTab][index - 1] = db[currentTab][index];
-            db[currentTab][index] = temp;
-            renderTable();
-        }
+        if (index > 0) { const temp = db[currentTab][index - 1]; db[currentTab][index - 1] = db[currentTab][index]; db[currentTab][index] = temp; renderTable(); }
     };
 
     window.moveRowDown = function(index) {
-        if (index < db[currentTab].length - 1) {
-            const temp = db[currentTab][index + 1];
-            db[currentTab][index + 1] = db[currentTab][index];
-            db[currentTab][index] = temp;
-            renderTable();
-        }
-    };
-
-    window.addTag = function(index, inputElement, event) {
-        if (event) event.preventDefault();
-        let val = inputElement.value.trim().replace(/,/g, '');
-        if (val) {
-            let tags = db.devices[index].tags || "";
-            let tagList = tags.split(',').map(t => t.trim()).filter(t => t);
-            if (!tagList.includes(val)) {
-                tagList.push(val);
-                db.devices[index].tags = tagList.join(', ');
-                updateDatalists(); // ★ サジェストリストも更新
-                focusAfterRender = index;
-                renderTable();
-            } else { inputElement.value = ''; }
-        }
-    };
-
-    window.removeTag = function(index, tagToRemove) {
-        let tags = db.devices[index].tags || "";
-        let tagList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove);
-        db.devices[index].tags = tagList.join(', ');
-        updateDatalists(); // ★ サジェストリストも更新
-        renderTable();
-    };
-
-    window.removeLastTag = function(index) {
-        let tags = db.devices[index].tags || "";
-        let tagList = tags.split(',').map(t => t.trim()).filter(t => t);
-        if (tagList.length > 0) {
-            tagList.pop();
-            db.devices[index].tags = tagList.join(', ');
-            updateDatalists(); // ★ サジェストリストも更新
-            focusAfterRender = index;
-            renderTable();
-        }
+        if (index < db[currentTab].length - 1) { const temp = db[currentTab][index + 1]; db[currentTab][index + 1] = db[currentTab][index]; db[currentTab][index] = temp; renderTable(); }
     };
 
     window.switchTab = function(tabName) {
@@ -424,16 +346,12 @@
         editingDeviceIndex = deviceIndex;
         const dev = db.devices[deviceIndex];
         document.getElementById('modalTitle').innerText = `Ports: ${dev.name || 'Unnamed Device'}`;
-        
         tempPorts = JSON.parse(JSON.stringify(dev.ports || []));
         renderPortTable();
         document.getElementById('modalOverlay').style.display = 'flex';
     };
 
-    window.closePortModal = function() {
-        document.getElementById('modalOverlay').style.display = 'none';
-        editingDeviceIndex = null;
-    };
+    window.closePortModal = function() { document.getElementById('modalOverlay').style.display = 'none'; editingDeviceIndex = null; };
 
     window.savePorts = function() {
         const trs = document.querySelectorAll('#portTableBody tr');
@@ -441,36 +359,19 @@
         trs.forEach(tr => {
             const inputs = tr.querySelectorAll('input');
             const pName = inputs[0].value.trim();
-            if (pName) {
-                tempPorts.push({
-                    name: pName,
-                    ip: inputs[1].value.trim() || null,
-                    mac: inputs[2].value.trim() || null
-                });
-            }
+            if (pName) tempPorts.push({ name: pName, ip: inputs[1].value.trim() || null, mac: inputs[2].value.trim() || null });
         });
         db.devices[editingDeviceIndex].ports = tempPorts;
-        renderTable(); 
-        closePortModal();
+        renderTable(); closePortModal();
     };
 
-    window.addPortRow = function() {
-        tempPorts.push({ name: "", ip: "", mac: "" });
-        renderPortTable();
-    };
-
-    window.removePortRow = function(index) {
-        tempPorts.splice(index, 1);
-        renderPortTable();
-    };
+    window.addPortRow = function() { tempPorts.push({ name: "", ip: "", mac: "" }); renderPortTable(); };
+    window.removePortRow = function(index) { tempPorts.splice(index, 1); renderPortTable(); };
 
     function renderPortTable() {
         const tbody = document.getElementById('portTableBody');
         tbody.innerHTML = '';
-        if (tempPorts.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty-state" style="padding: 20px;">ポートがありません。</td></tr>`;
-            return;
-        }
+        if (tempPorts.length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state" style="padding: 20px;">ポートがありません。</td></tr>`; return; }
         tempPorts.forEach((port, index) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -492,41 +393,21 @@
         tbody.innerHTML = '';
 
         if (currentTab === 'cables') {
-            thead.innerHTML = `
-                <th style="width: 80px; text-align: center;">Move</th>
-                <th>Device A 🔍</th>
-                <th>Port A</th>
-                <th style="width: 50px; text-align: center;">Swap</th>
-                <th>Port B</th>
-                <th>Device B 🔍</th>
-                <th style="width: 60px; text-align: center;">Delete</th>
-            `;
-            if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="empty-state">データがありません。右上のボタンから追加してください。</td></tr>`;
-                return;
-            }
+            thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th><th>Device A 🔍</th><th>Port A</th><th style="width: 50px; text-align: center;">Swap</th><th>Port B</th><th>Device B 🔍</th><th style="width: 60px; text-align: center;">Delete</th>`;
+            if (data.length === 0) { tbody.innerHTML = `<tr><td colspan="7" class="empty-state">データがありません。</td></tr>`; return; }
             data.forEach((row, index) => {
                 const tr = document.createElement('tr');
-                const devA = db.devices.find(d => d.id === row.device_a_id);
-                const devB = db.devices.find(d => d.id === row.device_b_id);
+                const devA = db.devices.find(d => d.id === row.device_a_id); const devB = db.devices.find(d => d.id === row.device_b_id);
                 const labelA = devA ? getDeviceLabel(devA) : (row.device_a_id ? "⚠️ 削除されたデバイス" : "");
                 const labelB = devB ? getDeviceLabel(devB) : (row.device_b_id ? "⚠️ 削除されたデバイス" : "");
-                const portA = row.port_a || "";
-                const portB = row.port_b || "";
-
                 tr.innerHTML = `
-                    <td style="text-align: center;">
-                        <div class="action-wrap">
-                            <button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''} title="上へ">⬆️</button>
-                            <button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''} title="下へ">⬇️</button>
-                        </div>
-                    </td>
+                    <td style="text-align: center;"><div class="action-wrap"><button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''}>⬆️</button><button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''}>⬇️</button></div></td>
                     <td><input type="text" list="deviceList" class="search-input" value="${labelA}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_a_id', this.value)"></td>
-                    <td><input type="text" list="dynamicPortList" class="search-input" value="${portA}" placeholder="ポートを選択..." onfocus="updatePortDatalist('${row.device_a_id || ''}')" onchange="updateCell(${index}, 'port_a', this.value)"></td>
-                    <td style="text-align: center;"><button class="btn btn-swap" onclick="swapCable(${index})" title="左右を入れ替える">⇄</button></td>
-                    <td><input type="text" list="dynamicPortList" class="search-input" value="${portB}" placeholder="ポートを選択..." onfocus="updatePortDatalist('${row.device_b_id || ''}')" onchange="updateCell(${index}, 'port_b', this.value)"></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${row.port_a || ''}" onfocus="updatePortDatalist('${row.device_a_id || ''}')" onchange="updateCell(${index}, 'port_a', this.value)"></td>
+                    <td style="text-align: center;"><button class="btn btn-swap" onclick="swapCable(${index})">⇄</button></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${row.port_b || ''}" onfocus="updatePortDatalist('${row.device_b_id || ''}')" onchange="updateCell(${index}, 'port_b', this.value)"></td>
                     <td><input type="text" list="deviceList" class="search-input" value="${labelB}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_b_id', this.value)"></td>
-                    <td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})" title="削除">✖</button></td>
+                    <td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})">✖</button></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -536,29 +417,18 @@
         let headerHtml = displayColumns.map(col => {
             let label = col;
             if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
-            if (col === 'tags') label += ' <span class="hint-text">(⏎ Enterで確定 / ✎ サジェスト)</span>';
+            if (col === 'system') label = 'System <span class="hint-text">(所属システム)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
             if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親: 第2階層まで)</span>';
             return `<th>${label}</th>`;
         }).join('');
         thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th>` + headerHtml + '<th style="width: 60px; text-align: center;">Delete</th>';
 
-        if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayColumns.length + 2}" class="empty-state">データがありません。右上のボタンから追加してください。</td></tr>`;
-            return;
-        }
+        if (data.length === 0) { tbody.innerHTML = `<tr><td colspan="${displayColumns.length + 2}" class="empty-state">データがありません。</td></tr>`; return; }
 
         data.forEach((row, index) => {
             const tr = document.createElement('tr');
-            const tdMove = document.createElement('td');
-            tdMove.style.textAlign = 'center';
-            tdMove.innerHTML = `
-                <div class="action-wrap">
-                    <button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''} title="上へ">⬆️</button>
-                    <button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''} title="下へ">⬇️</button>
-                </div>
-            `;
-            tr.appendChild(tdMove);
+            tr.innerHTML = `<td style="text-align: center;"><div class="action-wrap"><button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''}>⬆️</button><button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''}>⬇️</button></div></td>`;
             
             displayColumns.forEach(col => {
                 const td = document.createElement('td');
@@ -566,65 +436,30 @@
 
                 if (currentTab === 'devices' && col === 'location_id') {
                     const lineage = getLineage(val);
-                    const lvl1Id = lineage[0] || "";
-                    const lvl2Id = lineage[1] || "";
-                    const lvl3Id = lineage[2] || "";
-
+                    const lvl1Id = lineage[0] || "", lvl2Id = lineage[1] || "", lvl3Id = lineage[2] || "";
                     const roots = db.locations.filter(l => !l.parent_id).sort((a,b)=>compareFloorPaths(a.name, b.name));
                     const children = lvl1Id ? db.locations.filter(l => l.parent_id === lvl1Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
                     const grandchildren = lvl2Id ? db.locations.filter(l => l.parent_id === lvl2Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
 
-                    let sel1 = `<select onchange="updateDeviceLoc(${index}, 1, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%">
-                        <option value="">- フロア -</option>
-                        ${roots.map(l => `<option value="${l.id}" ${l.id===lvl1Id?'selected':''}>${l.name}</option>`).join('')}
-                    </select>`;
-
-                    let sel2 = `<select onchange="updateDeviceLoc(${index}, 2, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl1Id?'disabled':''}>
-                        <option value="">- 部屋 -</option>
-                        ${children.map(l => `<option value="${l.id}" ${l.id===lvl2Id?'selected':''}>${l.name}</option>`).join('')}
-                    </select>`;
-
-                    let sel3 = `<select onchange="updateDeviceLoc(${index}, 3, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl2Id?'disabled':''}>
-                        <option value="">- 詳細 -</option>
-                        ${grandchildren.map(l => `<option value="${l.id}" ${l.id===lvl3Id?'selected':''}>${l.name}</option>`).join('')}
-                    </select>`;
-
+                    let sel1 = `<select onchange="updateDeviceLoc(${index}, 1, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%"><option value="">- フロア -</option>${roots.map(l => `<option value="${l.id}" ${l.id===lvl1Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
+                    let sel2 = `<select onchange="updateDeviceLoc(${index}, 2, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl1Id?'disabled':''}><option value="">- 部屋 -</option>${children.map(l => `<option value="${l.id}" ${l.id===lvl2Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
+                    let sel3 = `<select onchange="updateDeviceLoc(${index}, 3, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl2Id?'disabled':''}><option value="">- 詳細 -</option>${grandchildren.map(l => `<option value="${l.id}" ${l.id===lvl3Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
                     td.innerHTML = `<div style="display:flex; gap:4px; min-width:300px;">${sel1}${sel2}${sel3}</div>`;
                 }
                 else if (currentTab === 'locations' && col === 'parent_id') {
                     const validParents = db.locations.filter(l => l.id !== row.id && getLocDepth(l.id) < 2);
-                    const parentOptions = `<option value="">-- なし (最上位) --</option>` + 
-                        validParents.map(l => {
-                            const indent = "・".repeat(getLocDepth(l.id));
-                            return `<option value="${l.id}">${indent} ${l.name}</option>`;
-                        }).join('');
+                    const parentOptions = `<option value="">-- なし (最上位) --</option>` + validParents.map(l => `<option value="${l.id}">${"・".repeat(getLocDepth(l.id))} ${l.name}</option>`).join('');
                     td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${parentOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
                 }
                 else if (currentTab === 'locations' && col === 'name') {
-                    const depth = getLocDepth(row.id);
-                    const indentPx = depth * 20;
-                    const dotHtml = depth > 0 ? `<span class="tree-dot">・</span>` : ``;
-                    td.innerHTML = `
-                        <div style="display: flex; align-items: center; padding-left: ${indentPx}px;">
-                            ${dotHtml}
-                            <input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;">
-                        </div>
-                    `;
+                    td.innerHTML = `<div style="display: flex; align-items: center; padding-left: ${getLocDepth(row.id) * 20}px;">${getLocDepth(row.id) > 0 ? `<span class="tree-dot">・</span>` : ``}<input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;"></div>`;
                 }
                 else if (currentTab === 'devices' && col === 'role') {
                     td.innerHTML = `<input type="text" list="roleList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Access Switch">`;
                 }
-                else if (currentTab === 'devices' && col === 'tags') {
-                    let tagList = val.split(',').map(t => t.trim()).filter(t => t);
-                    let tagsHtml = tagList.map(t => `<span class="tag-pill">${t} <span class="tag-remove" onclick="removeTag(${index}, '${t}')">×</span></span>`).join('');
-                    td.innerHTML = `
-                        <div class="tag-container" onclick="this.querySelector('input').focus()">
-                            ${tagsHtml}
-                            <input type="text" list="tagList" class="tag-input search-input" placeholder="${tagList.length === 0 ? 'タグを追加' : ''}"
-                                onkeydown="if(event.key === 'Enter' || event.key === ',') { addTag(${index}, this, event); } else if(event.key === 'Backspace' && this.value === '') { removeLastTag(${index}); }"
-                                onblur="if(this.value.trim()){ addTag(${index}, this); }">
-                        </div>
-                    `;
+                // ★ 新設された System 用の入力欄
+                else if (currentTab === 'devices' && col === 'system') {
+                    td.innerHTML = `<input type="text" list="systemList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Lighting">`;
                 }
                 else if (currentTab === 'devices' && col === 'ports') {
                     const portCount = (row.ports && Array.isArray(row.ports)) ? row.ports.length : 0;
@@ -635,132 +470,62 @@
                 }
                 tr.appendChild(td);
             });
-            tr.innerHTML += `<td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})" title="削除">✖</button></td>`;
+            tr.innerHTML += `<td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})">✖</button></td>`;
             tbody.appendChild(tr);
         });
-
-        if (focusAfterRender !== null) {
-            const inputToFocus = document.querySelector(`#tableBody tr:nth-child(${focusAfterRender + 1}) .tag-input`);
-            if (inputToFocus) inputToFocus.focus();
-            focusAfterRender = null;
-        }
     }
 
     window.addNewRow = function() {
         const newRow = {};
         schemas[currentTab].forEach(col => newRow[col] = (col === 'ports' ? [] : ""));
-        if (schemas[currentTab].includes('id')) {
-            newRow['id'] = currentTab === 'locations' ? `L-${Date.now().toString().slice(-4)}` : `D-${Date.now().toString().slice(-4)}`;
-        } else {
-             newRow['id'] = `cab_${Date.now().toString().slice(-4)}`;
-        }
-        db[currentTab].unshift(newRow);
-        renderTable();
+        newRow['id'] = currentTab === 'locations' ? `L-${Date.now().toString().slice(-4)}` : (currentTab === 'cables' ? `cab_${Date.now().toString().slice(-4)}` : `D-${Date.now().toString().slice(-4)}`);
+        db[currentTab].unshift(newRow); renderTable();
     };
 
-    window.deleteRow = function(index) {
-        if (confirm("この行を削除しますか？")) { db[currentTab].splice(index, 1); renderTable(); }
-    };
+    window.deleteRow = function(index) { if (confirm("この行を削除しますか？")) { db[currentTab].splice(index, 1); renderTable(); } };
 
     function downloadFile(filename, content, type) {
-        const blob = new Blob([content], { type: type });
-        const url = URL.createObjectURL(blob);
+        const blob = new Blob([content], { type: type }); const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     }
 
     window.exportData = function(format) {
-        const d = new Date();
-        const dateStr = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
-        
+        const d = new Date(); const dateStr = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
         if (format === 'yaml') {
-            const jsonDevices = db.devices.map(dev => ({ 
-                ...dev, 
-                tags: (dev.tags || "").split(',').map(t => t.trim()).filter(t => t),
-            }));
-            const unifiedData = {
-                devices: jsonDevices,
-                cables: db.cables,
-                locations: db.locations
-            };
-            
-            const yamlStr = jsyaml.dump(unifiedData, { lineWidth: -1 });
+            // 書き出す時も新フォーマット
+            const yamlStr = jsyaml.dump({ devices: db.devices, cables: db.cables, locations: db.locations }, { lineWidth: -1 });
             downloadFile(`topology_data_${dateStr}.yaml`, yamlStr, 'text/yaml');
-            
         } else if (format === 'notion') {
-            const columns = ['Name', 'Role', 'Location', 'Tags', 'Ports & Connections'];
+            const columns = ['Name', 'Role', 'Location', 'System', 'Ports & Connections'];
             let csvContent = columns.join(',') + '\n';
-
             db.devices.forEach(dev => {
                 const locName = dev.location_id ? getFullLocName(dev.location_id) : '';
-                const tags = dev.tags ? dev.tags.split(',').map(t => t.trim()).filter(t => t).join(', ') : '';
-                
                 const definedPorts = dev.ports || [];
                 const processedPortNames = new Set();
-                let activeLines = [];
-                let freePortNames = [];
-
+                let activeLines = []; let freePortNames = [];
                 definedPorts.forEach(p => {
                     processedPortNames.add(p.name);
-                    
                     let connection = null;
                     db.cables.forEach(c => {
-                        if (c.device_a_id === dev.id && c.port_a === p.name) {
-                            const peer = db.devices.find(x => x.id === c.device_b_id);
-                            connection = `↔ (${c.port_b || '-'}) ${peer ? peer.name : '不明'}`;
-                        } else if (c.device_b_id === dev.id && c.port_b === p.name) {
-                            const peer = db.devices.find(x => x.id === c.device_a_id);
-                            connection = `↔ (${c.port_a || '-'}) ${peer ? peer.name : '不明'}`;
-                        }
+                        if (c.device_a_id === dev.id && c.port_a === p.name) connection = `↔ (${c.port_b || '-'}) ${db.devices.find(x => x.id === c.device_b_id)?.name || '不明'}`;
+                        else if (c.device_b_id === dev.id && c.port_b === p.name) connection = `↔ (${c.port_a || '-'}) ${db.devices.find(x => x.id === c.device_a_id)?.name || '不明'}`;
                     });
-
                     if (connection) {
-                        let meta = [];
-                        if (p.ip) meta.push(`IP:${p.ip}`);
-                        if (p.mac) meta.push(`MAC:${p.mac}`);
-                        let metaStr = meta.length > 0 ? `[${meta.join(', ')}] ` : '';
-                        activeLines.push(`🔗 ${p.name}: ${metaStr}${connection}`);
-                    } else {
-                        freePortNames.push(`[${p.name}]`);
-                    }
+                        let meta = []; if (p.ip) meta.push(`IP:${p.ip}`); if (p.mac) meta.push(`MAC:${p.mac}`);
+                        activeLines.push(`🔗 ${p.name}: ${meta.length > 0 ? `[${meta.join(', ')}] ` : ''}${connection}`);
+                    } else freePortNames.push(`[${p.name}]`);
                 });
-
                 db.cables.forEach(c => {
-                    if (c.device_a_id === dev.id && !processedPortNames.has(c.port_a)) {
-                         const peer = db.devices.find(x => x.id === c.device_b_id);
-                         activeLines.push(`⚠️ ${c.port_a || '-'}: ↔ (${c.port_b || '-'}) ${peer ? peer.name : '不明'}`);
-                    } else if (c.device_b_id === dev.id && !processedPortNames.has(c.port_b)) {
-                         const peer = db.devices.find(x => x.id === c.device_a_id);
-                         activeLines.push(`⚠️ ${c.port_b || '-'}: ↔ (${c.port_a || '-'}) ${peer ? peer.name : '不明'}`);
-                    }
+                    if (c.device_a_id === dev.id && !processedPortNames.has(c.port_a)) activeLines.push(`⚠️ ${c.port_a || '-'}: ↔ (${c.port_b || '-'}) ${db.devices.find(x => x.id === c.device_b_id)?.name || '不明'}`);
+                    else if (c.device_b_id === dev.id && !processedPortNames.has(c.port_b)) activeLines.push(`⚠️ ${c.port_b || '-'}: ↔ (${c.port_a || '-'}) ${db.devices.find(x => x.id === c.device_a_id)?.name || '不明'}`);
                 });
-
                 let finalOutput = [];
-                if (activeLines.length > 0) {
-                    finalOutput.push("【Connected】");
-                    finalOutput.push(...activeLines);
-                }
-                if (freePortNames.length > 0) {
-                    if (finalOutput.length > 0) finalOutput.push(""); 
-                    finalOutput.push("【Available】");
-                    finalOutput.push(freePortNames.join(" ")); 
-                }
+                if (activeLines.length > 0) { finalOutput.push("【Connected】"); finalOutput.push(...activeLines); }
+                if (freePortNames.length > 0) { if (finalOutput.length > 0) finalOutput.push(""); finalOutput.push("【Available】"); finalOutput.push(freePortNames.join(" ")); }
                 if (finalOutput.length === 0) finalOutput.push("ポートなし");
 
-                const row = [
-                    dev.name || '',
-                    dev.role || '',
-                    locName,
-                    tags,
-                    finalOutput.join('\n')
-                ];
-
-                csvContent += row.map(val => {
-                    let str = String(val);
-                    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-                        str = '"' + str.replace(/"/g, '""') + '"';
-                    }
-                    return str;
-                }).join(',') + '\n';
+                const row = [ dev.name || '', dev.role || '', locName, dev.system || '', finalOutput.join('\n') ];
+                csvContent += row.map(val => { let str = String(val); return (str.includes(',') || str.includes('\n') || str.includes('"')) ? '"' + str.replace(/"/g, '""') + '"' : str; }).join(',') + '\n';
             });
             downloadFile(`notion_assets_${dateStr}.csv`, "\uFEFF" + csvContent, 'text/csv;charset=utf-8;');
         }
