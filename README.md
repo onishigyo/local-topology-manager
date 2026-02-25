@@ -18,12 +18,34 @@ Maintaining physical network topologies (Devices, Cables, Locations) usually req
 
 **"Data as Code" approach is the answer.** This tool allows you to manage your entire physical infrastructure via a single YAML file. It runs entirely in your local browser with **Zero Dependencies**. Since core libraries are bundled, it is **100% Air-gap Ready**—perfect for secure datacenters or MDF rooms with no internet access.
 
+### ⚠️ Important Concepts & Rules (v2.0)
+To keep the topology clean and prevent data chaos, please follow these 3 operational rules:
+
+#### 1. System Categorization Rule
+Assign strictly ONE `System` to each device (multi-tags have been abolished).
+* **End Devices (Dedicated):** Assign specific system names like `Lighting`, `LiDAR`, or `BMS`.
+* **Shared Infrastructure:** Do NOT assign specific system names to shared pipes (e.g., ONUs, Core Routers, Floor L2SWs). Leave them blank or set them to `Infra`.
+* **Security & Maintenance:** Devices monitoring the entire network (e.g., Nozomi Guardian) should be set to `Security` or `Maintenance`.
+
+#### 2. Smart Trace Visualization
+When you filter by a specific system (e.g., `Lighting`) in the Viewer, the "Smart Trace" kicks in:
+1. Target devices (`Lighting`) are highlighted in **blue**.
+2. The tool automatically traces the uplink path to the core network (ONU).
+3. The required shared infrastructure on that path is automatically drawn in **white** standard boxes.
+> 💡 **Meaning:** You don't need to manually tag intermediate switches!
+
+#### 3. 3-Level Location Input
+In the Editor, locations should be managed using the following 3-tier hierarchy:
+* **Level 1 (Floor):** e.g., `1F`, `2F`
+* **Level 2 (Room):** e.g., `MDF Room`, `Fan Room`
+* **Level 3 (Detail):** e.g., `Rack A`, `Control Panel 2`
+
 ### ✨ Features
 
 #### 1. 🗄️ Purpose-Built Bulk Editor (`editor.html`)
 - A dedicated tabular UI optimized for network configuration, featuring specific actions like **cable Swapping (⇄)** and **row reordering (⬆️⬇️)**.
 - **Port & IP Management:** Manage physical ports, MAC addresses, and IP addresses (including Virtual IPs and Loopbacks) for each device.
-- **Smart Suggestion:** Automatically suggests available ports based on the selected device to prevent typos, along with device roles/locations.
+- **Smart Suggestion:** Automatically suggests available ports based on the selected device to prevent typos, along with device roles/locations/systems.
 
 #### 2. 🗺️ Interactive Topology Viewer (`viewer.html`)
 - Powered by `Mermaid.js`. Generates beautiful physical topology maps instantly.
@@ -76,7 +98,7 @@ devices:
     name: ISP Modem 01
     role: ONU
     location_id: loc_f1
-    tags: WAN
+    system: Infra  # v2.0: Single system instead of multiple tags
     ports:
       - name: LAN1
         ip: 192.168.0.1
@@ -102,12 +124,34 @@ locations:
 
 本ツールは **「1つのYAMLファイルをマスターデータとして管理する」** アプローチを採用しています。環境構築は一切不要で、HTMLをブラウザで開くだけで実運用に耐えうる構成・IPアドレス管理が実現できます。必要なライブラリを同梱しているため、**完全なオフライン環境（閉域網・エアギャップ）** にも対応。電波の届かないデータセンターの地下やセキュリティの厳しい現場でも、USBメモリで持ち込んで即座に稼働します。
 
+### ⚠️ 重要な概念と運用ルール (v2.0 新仕様)
+構成図を破綻させずに綺麗に管理するため、以下の3つの運用ルールを設けています。
+
+#### 1. 設備システム (System) の登録ルール
+各デバイスには「どのシステムに属しているか」を示す **System** を1つだけ設定します（複数タグの廃止）。
+* **末端機器（専用機器）**: `Lighting`, `LiDAR`, `BMS` などのシステム名を設定します。
+* **共有インフラ**: 複数のシステムが相乗りする土管（ONU、コアルーター、各階L2SWなど）には、特定のシステム名を設定しないでください。代わりに `Infra` と入力するか、未設定にします。
+* **監視・保守機器**: Nozomi Guardianなどインフラ全体を監視する機器は `Security` や `Maintenance` と設定します。
+
+#### 2. スマート・トレース機能（経路の自動逆算）
+Viewerで特定のシステム（例：`Lighting`）を選択して描画すると、以下の「スマート・トレース」が発動します。
+1. `Lighting` に設定された主役機器が**青色**でハイライトされます。
+2. その機器から、大元（ONU等）へ向かうケーブル経路をプログラムが自動的に逆算します。
+3. 経路上にある共有インフラ（無設定や `Infra` の機器）も自動的に巻き込んで、**白色**の通常枠として描画します。
+> 💡 **つまり、人間がわざわざ途中のルーターやスイッチに「Lighting」と入力する必要はありません！**
+
+#### 3. ロケーション (Location) の3階層入力
+デバイスの配置場所は、Editor上で以下の3階層に分けて入力・管理します。
+* **Level 1 (フロア)**: `1F`, `2F`, `4F` など
+* **Level 2 (部屋)**: `ファンルーム`, `MDF室`, `事務室` など
+* **Level 3 (詳細)**: `システム制御盤2`, `ラックA` など
+
 ### ✨ 特徴
 
 #### 1. 🗄️ ネットワーク管理に特化したEditor (`editor.html`)
 - 専用のテーブルUIで大量のデータを効率よく編集できます。**結線の左右入れ替え（SWAP: ⇄）** や **行の上下移動（⬆️⬇️）** など、構成管理に便利なアクションを備えています。
 - **ポート・IP管理:** 機器ごとにポート、IPアドレス（仮想IP・ループバック含む）、MACアドレスを管理できる専用UIを搭載。
-- **サジェスト機能:** 結線入力時、選択した機器が持つポートだけを賢くサジェストし、入力ミスを防ぎます。
+- **サジェスト機能:** 結線入力時、選択した機器が持つポートだけを賢くサジェストし、入力ミスを防ぎます（System名でのソートも可能）。
 
 #### 2. 🗺️ インタラクティブなViewer (`viewer.html`)
 - `Mermaid.js` による自動描画で、美しい物理トポロジー図を瞬時に生成します。機器をクリックするとポートやIPの詳細情報も確認できます。
@@ -160,7 +204,7 @@ devices:
     name: ISP Modem 01
     role: ONU
     location_id: loc_f1
-    tags: WAN
+    system: Infra  # v2.0新仕様: 1機器につき1システム
     ports:
       - name: LAN1
         ip: 192.168.0.1
