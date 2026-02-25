@@ -414,12 +414,17 @@
             return;
         }
 
+        // ★ ヘッダーのラベル表示を整えるロジック
         let headerHtml = displayColumns.map(col => {
-            let label = col;
+            // 基本：頭文字を大文字にし、_id などを消す（name -> Name, ports -> Ports）
+            let label = col.charAt(0).toUpperCase() + col.slice(1).replace('_id', '');
+            
+            // 個別の補足説明を追加
             if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
-            if (col === 'system') label = 'System <span class="hint-text">(所属システム)</span>';
+            if (col === 'system') label += ' <span class="hint-text">(所属システム)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
-            if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親: 第2階層まで)</span>';
+            if (col === 'parent_id' && currentTab === 'locations') label = 'Parent Location <span class="hint-text">(親: 第2階層まで)</span>';
+            
             return `<th>${label}</th>`;
         }).join('');
         thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th>` + headerHtml + '<th style="width: 60px; text-align: center;">Delete</th>';
