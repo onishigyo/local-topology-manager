@@ -116,6 +116,7 @@ locations:
     name: Floor 1
     parent_id: null
 ```
+---
 
 ## 日本語ドキュメント
 
