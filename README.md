@@ -23,7 +23,7 @@ To keep the topology clean and prevent data chaos, please follow these 3 operati
 
 #### 1. System Categorization Rule
 Assign strictly ONE `System` to each device (multi-tags have been abolished).
-* **End Devices (Dedicated):** Assign specific system names like `Lighting`, `LiDAR`, or `BMS`.
+* **End Devices (Dedicated):** Assign specific system names like `Lighting`, `HVAC`, or `BMS`.
 * **Shared Infrastructure:** Do NOT assign specific system names to shared pipes (e.g., ONUs, Core Routers, Floor L2SWs). Leave them blank or set them to `Infra`.
 * **Security & Maintenance:** Devices monitoring the entire network (e.g., Nozomi Guardian) should be set to `Security` or `Maintenance`.
 
@@ -129,7 +129,7 @@ locations:
 
 #### 1. 設備システム (System) の登録ルール
 各デバイスには「どのシステムに属しているか」を示す **System** を1つだけ設定します（複数タグの廃止）。
-* **末端機器（専用機器）**: `Lighting`, `LiDAR`, `BMS` などのシステム名を設定します。
+* **末端機器（専用機器）**: `Lighting`, `HVAC`, `BMS` などのシステム名を設定します。
 * **共有インフラ**: 複数のシステムが相乗りする土管（ONU、コアルーター、各階L2SWなど）には、特定のシステム名を設定しないでください。代わりに `Infra` と入力するか、未設定にします。
 * **監視・保守機器**: Nozomi Guardianなどインフラ全体を監視する機器は `Security` や `Maintenance` と設定します。
 
