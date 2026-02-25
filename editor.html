@@ -40,6 +40,7 @@
         
         input[type="text"], select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 0.9rem; }
         input[type="text"]:focus, select:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        select:disabled { background-color: #f1f5f9; cursor: not-allowed; opacity: 0.7; }
         .search-input { background-color: #f8fafc; cursor: pointer; }
         .search-input:focus { background-color: #fff; cursor: text; }
         
@@ -60,8 +61,6 @@
         .modal-header h2 { margin: 0; font-size: 1.2rem; color: #1e293b; }
         .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #94a3b8; }
         .modal-close:hover { color: #ef4444; }
-        
-        /* ポートテーブルが親テーブルのmin-widthに引きずられないようにする修正 */
         #portTable { min-width: auto; }
     </style>
 </head>
@@ -156,7 +155,6 @@
     let editingDeviceIndex = null;
     let tempPorts = [];
 
-    // 🔥 インポート機能：YAML 読込 🔥
     document.getElementById('importYAML').addEventListener('change', async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -212,30 +210,31 @@
         return 0;
     }
 
-    function getFullLocName(locId) {
-        if (!locId) return "未設定";
-        const locLookup = new Map(db.locations.map(l => [l.id, l]));
+    // ★ ツリー階層の配列を取得する新機能 [親, 子, 孫]
+    function getLineage(locId) {
         let path = [];
         let curr = locId;
         let visited = new Set();
-        while (curr && locLookup.has(curr) && !visited.has(curr)) {
+        while (curr && !visited.has(curr)) {
             visited.add(curr);
-            path.push(locLookup.get(curr).name);
-            curr = locLookup.get(curr).parent_id;
+            path.unshift(curr);
+            let loc = db.locations.find(l => l.id === curr);
+            curr = loc ? loc.parent_id : null;
         }
-        return path.length > 0 ? path.reverse().join(' / ') : "不明なLocation";
+        return path;
+    }
+
+    function getFullLocName(locId) {
+        if (!locId) return "未設定";
+        const lineage = getLineage(locId);
+        return lineage.map(id => {
+            const l = db.locations.find(x => x.id === id);
+            return l ? l.name : id;
+        }).join(' / ');
     }
 
     function getLocDepth(locId) {
-        let depth = 0;
-        let curr = db.locations.find(l => l.id === locId);
-        let visited = new Set();
-        while (curr && curr.parent_id && !visited.has(curr.id)) {
-            visited.add(curr.id);
-            depth++;
-            curr = db.locations.find(l => l.id === curr.parent_id);
-        }
-        return depth;
+        return getLineage(locId).length - 1; // root is 0
     }
 
     function sortLocationsTree() {
@@ -312,6 +311,20 @@
         db[currentTab][index][key] = value;
         if (key === 'role' || key === 'name' || key === 'location_id') updateDatalists();
         if (currentTab === 'locations' && (key === 'name' || key === 'parent_id')) renderTable();
+    };
+
+    // ★ デバイスの3階層ロケーションを更新する関数
+    window.updateDeviceLoc = function(index, level, val, lvl1, lvl2) {
+        let newLoc = val;
+        // 未選択に戻された場合、上の階層のIDをセットする
+        if (!val) {
+            if (level === 3) newLoc = lvl2 || lvl1 || "";
+            if (level === 2) newLoc = lvl1 || "";
+            if (level === 1) newLoc = "";
+        }
+        db.devices[index].location_id = newLoc;
+        updateDatalists();
+        renderTable(); // UIを再描画して子階層のプルダウンを切り替える
     };
 
     window.updateCableByLabel = function(index, key, label) {
@@ -512,7 +525,7 @@
             if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
             if (col === 'tags') label += ' <span class="hint-text">(⏎ Enterで確定)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
-            if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親ロケーション)</span>';
+            if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親: 第2階層まで)</span>';
             return `<th>${label}</th>`;
         }).join('');
         thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th>` + headerHtml + '<th style="width: 60px; text-align: center;">Delete</th>';
@@ -521,11 +534,6 @@
             tbody.innerHTML = `<tr><td colspan="${displayColumns.length + 2}" class="empty-state">データがありません。右上のボタンから追加してください。</td></tr>`;
             return;
         }
-
-        let locList = db.locations.map(l => ({ id: l.id, fullName: getFullLocName(l.id) }));
-        locList.sort((a, b) => compareFloorPaths(a.fullName, b.fullName));
-        const locOptions = `<option value="">-- 未設定 --</option>` + 
-            locList.map(l => `<option value="${l.id}">${l.fullName}</option>`).join('');
 
         data.forEach((row, index) => {
             const tr = document.createElement('tr');
@@ -544,11 +552,41 @@
                 const val = row[col] || "";
 
                 if (currentTab === 'devices' && col === 'location_id') {
-                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${locOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
+                    // ★ 3階層連動プルダウンの生成ロジック ★
+                    const lineage = getLineage(val);
+                    const lvl1Id = lineage[0] || "";
+                    const lvl2Id = lineage[1] || "";
+                    const lvl3Id = lineage[2] || "";
+
+                    const roots = db.locations.filter(l => !l.parent_id).sort((a,b)=>compareFloorPaths(a.name, b.name));
+                    const children = lvl1Id ? db.locations.filter(l => l.parent_id === lvl1Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
+                    const grandchildren = lvl2Id ? db.locations.filter(l => l.parent_id === lvl2Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
+
+                    let sel1 = `<select onchange="updateDeviceLoc(${index}, 1, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%">
+                        <option value="">- フロア -</option>
+                        ${roots.map(l => `<option value="${l.id}" ${l.id===lvl1Id?'selected':''}>${l.name}</option>`).join('')}
+                    </select>`;
+
+                    let sel2 = `<select onchange="updateDeviceLoc(${index}, 2, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl1Id?'disabled':''}>
+                        <option value="">- 部屋 -</option>
+                        ${children.map(l => `<option value="${l.id}" ${l.id===lvl2Id?'selected':''}>${l.name}</option>`).join('')}
+                    </select>`;
+
+                    let sel3 = `<select onchange="updateDeviceLoc(${index}, 3, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl2Id?'disabled':''}>
+                        <option value="">- 詳細 -</option>
+                        ${grandchildren.map(l => `<option value="${l.id}" ${l.id===lvl3Id?'selected':''}>${l.name}</option>`).join('')}
+                    </select>`;
+
+                    td.innerHTML = `<div style="display:flex; gap:4px; min-width:300px;">${sel1}${sel2}${sel3}</div>`;
                 }
                 else if (currentTab === 'locations' && col === 'parent_id') {
+                    // ★ 親ロケーションを「第2階層まで（深さ0, 1）」に制限 ★
+                    const validParents = db.locations.filter(l => l.id !== row.id && getLocDepth(l.id) < 2);
                     const parentOptions = `<option value="">-- なし (最上位) --</option>` + 
-                        db.locations.filter(l => l.id !== row.id).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+                        validParents.map(l => {
+                            const indent = "・".repeat(getLocDepth(l.id));
+                            return `<option value="${l.id}">${indent} ${l.name}</option>`;
+                        }).join('');
                     td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${parentOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
                 }
                 else if (currentTab === 'locations' && col === 'name') {
@@ -619,7 +657,6 @@
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     }
 
-    // 🔥 エクスポート処理（Notion CSV: ハイブリッド出力版） 🔥
     window.exportData = function(format) {
         const d = new Date();
         const dateStr = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
@@ -651,7 +688,6 @@
                 let activeLines = [];
                 let freePortNames = [];
 
-                // 1. 全ポートをチェックし、「接続済み」と「空き」に仕分ける
                 definedPorts.forEach(p => {
                     processedPortNames.add(p.name);
                     
@@ -677,7 +713,6 @@
                     }
                 });
 
-                // 2. ケーブル情報にはあるが、ポート登録されていない野良ポートを拾う
                 db.cables.forEach(c => {
                     if (c.device_a_id === dev.id && !processedPortNames.has(c.port_a)) {
                          const peer = db.devices.find(x => x.id === c.device_b_id);
@@ -688,16 +723,15 @@
                     }
                 });
 
-                // 3. 最終出力テキストの組み立て
                 let finalOutput = [];
                 if (activeLines.length > 0) {
                     finalOutput.push("【Connected】");
                     finalOutput.push(...activeLines);
                 }
                 if (freePortNames.length > 0) {
-                    if (finalOutput.length > 0) finalOutput.push(""); // セクション間の空行
+                    if (finalOutput.length > 0) finalOutput.push(""); 
                     finalOutput.push("【Available】");
-                    finalOutput.push(freePortNames.join(" ")); // 横に並べる！
+                    finalOutput.push(freePortNames.join(" ")); 
                 }
                 if (finalOutput.length === 0) finalOutput.push("ポートなし");
 
