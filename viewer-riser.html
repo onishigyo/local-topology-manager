@@ -147,13 +147,27 @@
         if (!file) return;
         try {
             const text = await file.text();
-            db = jsyaml.load(text);
+            const data = jsyaml.load(text);
+            
+            // ★ マイグレーション処理 (EditorやViewerと同じ)
+            if (data.devices) {
+                data.devices = data.devices.map(d => {
+                    let sys = d.system || "";
+                    if (!sys && d.tags) {
+                        let t = Array.isArray(d.tags) ? d.tags : d.tags.split(',');
+                        if (t.length > 0 && t[0].trim() !== "") sys = t[0].trim();
+                    }
+                    return { ...d, system: sys };
+                });
+            }
+            db = data;
+
             const statusEl = document.getElementById('dataStatus');
             statusEl.innerText = `🟢 読込完了 (${db.devices?.length || 0} Devices)`;
             statusEl.classList.add('loaded');
             
             calculateAbsoluteDistances();
-            updateTagUI(); 
+            updateSystemUI(); // ★ タグじゃなくてSystemを抽出する関数に変更
         } catch (e) {
             alert("読み込みエラー: " + e.message);
         }
@@ -191,20 +205,23 @@
         }
     }
 
-    function updateTagUI() {
+    // ★ TagsではなくSystemをリストアップするロジックに変更
+    function updateSystemUI() {
         const container = document.getElementById('tagContainer');
         if (!db.devices || !db.devices.length) return;
-        const allTags = new Set();
-        let hasUntagged = false;
+        const allSystems = new Set();
+        let hasNoSystem = false;
+        
         db.devices.forEach(d => { 
-            if (d.tags && Array.isArray(d.tags) && d.tags.length > 0) d.tags.forEach(t => allTags.add(t)); 
-            else hasUntagged = true;
+            if (d.system) allSystems.add(d.system);
+            else hasNoSystem = true;
         });
+        
         container.innerHTML = '';
-        Array.from(allTags).sort().forEach(tag => {
-            container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="${tag}" class="tag-checkbox"> ${tag}</label>`;
+        Array.from(allSystems).sort().forEach(sys => {
+            container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="${sys}" class="tag-checkbox"> ${sys}</label>`;
         });
-        if (hasUntagged) container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="__UNTAGGED__" class="tag-checkbox"> <i>(Untagged)</i></label>`;
+        if (hasNoSystem) container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="__UNTAGGED__" class="tag-checkbox"> <i>(Systemなし)</i></label>`;
     }
 
     function getFloorWeight(name) {
@@ -227,7 +244,6 @@
         return ids;
     }
 
-    // ★ 階層ごとのパスを取得するロジック（追加）
     function getLineage(locId) {
         let path = [];
         let curr = locId;
@@ -242,13 +258,14 @@
     }
 
     function renderBuilding() {
-        const activeTags = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(cb => cb.value);
-        if (activeTags.length === 0) return alert("少なくとも1つのタグを選択してください。");
+        // ★ activeTags を activeSystems に変更
+        const activeSystems = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(cb => cb.value);
+        if (activeSystems.length === 0) return alert("少なくとも1つのSystemを選択してください。");
 
+        // ★ d.tags ではなく d.system でフィルタリングするように変更
         const filteredDevices = db.devices.filter(d => {
-            const isUntagged = !d.tags || !Array.isArray(d.tags) || d.tags.length === 0;
-            if (isUntagged && activeTags.includes('__UNTAGGED__')) return true;
-            if (!isUntagged && d.tags.some(tag => activeTags.includes(tag))) return true;
+            if (!d.system && activeSystems.includes('__UNTAGGED__')) return true;
+            if (d.system && activeSystems.includes(d.system)) return true;
             return false;
         });
 
@@ -278,8 +295,9 @@
                 if (ancestorFound) {
                     if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
                     const d = uniqueMap.get(id);
-                    const tagName = (d.tags && d.tags.length > 0) ? d.tags[0] : "Untagged";
-                    summaryMap.get(ancestorFound)[tagName] = (summaryMap.get(ancestorFound)[tagName] || 0) + 1;
+                    // ★ 雲マーク（Summary）の集計も d.tags から d.system に変更
+                    const sysName = d.system ? d.system : "Systemなし";
+                    summaryMap.get(ancestorFound)[sysName] = (summaryMap.get(ancestorFound)[sysName] || 0) + 1;
                 }
             });
         }
@@ -289,10 +307,10 @@
         
         summaryMap.forEach((sums, pId) => {
             const parentDev = uniqueMap.get(pId);
-            for (const [tagName, count] of Object.entries(sums)) {
-                const sId = `sum_${pId}_${tagName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            for (const [sysName, count] of Object.entries(sums)) {
+                const sId = `sum_${pId}_${sysName.replace(/[^a-zA-Z0-9]/g, '_')}`;
                 virtualDevices.push({
-                    id: sId, name: `☁️ ${tagName} (x${count})`, role: 'Summary',
+                    id: sId, name: `☁️ ${sysName} (x${count})`, role: 'Summary',
                     location_id: parentDev.location_id, isSummary: true, hop: deviceDistances.get(pId) + 1
                 });
                 virtualCablesToDraw.push({ device_a_id: pId, port_a: '', device_b_id: sId, port_b: '', isSummary: true });
@@ -362,7 +380,6 @@
                 const icon = dev.isSummary ? '' : getIcon(dev.role);
                 const roleText = dev.isSummary ? '' : `[${dev.role || 'Role未定'}]`;
                 
-                // ★ 部屋・詳細情報をカード内にバッジ表示するロジック ★
                 let subLocStr = "";
                 if (!dev.isSummary) {
                     const sysStr = dev.system ? `<div style="font-size: 0.7rem; color: #10b981; margin-top: 4px; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #d1fae5; font-weight: bold;">⚙️ ${dev.system}</div><br/>` : "";
