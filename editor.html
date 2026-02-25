@@ -141,6 +141,7 @@
 <datalist id="roleList"></datalist>
 <datalist id="deviceList"></datalist>
 <datalist id="dynamicPortList"></datalist>
+<datalist id="tagList"></datalist>
 
 <script>
     const schemas = {
@@ -210,7 +211,6 @@
         return 0;
     }
 
-    // ★ ツリー階層の配列を取得する新機能 [親, 子, 孫]
     function getLineage(locId) {
         let path = [];
         let curr = locId;
@@ -234,7 +234,7 @@
     }
 
     function getLocDepth(locId) {
-        return getLineage(locId).length - 1; // root is 0
+        return getLineage(locId).length - 1; 
     }
 
     function sortLocationsTree() {
@@ -294,6 +294,18 @@
         document.getElementById('roleList').innerHTML = roles.map(r => `<option value="${r}">`).join('');
         const deviceLabels = db.devices.map(d => `<option value="${getDeviceLabel(d)}">`).join('');
         document.getElementById('deviceList').innerHTML = deviceLabels;
+
+        // ★ タグの全リストを収集して datalist に反映 ★
+        const tags = new Set();
+        db.devices.forEach(d => {
+            if (d.tags) {
+                d.tags.split(',').forEach(t => {
+                    const trimmed = t.trim();
+                    if (trimmed) tags.add(trimmed);
+                });
+            }
+        });
+        document.getElementById('tagList').innerHTML = [...tags].sort().map(t => `<option value="${t}">`).join('');
     }
 
     window.updatePortDatalist = function(deviceId) {
@@ -313,10 +325,8 @@
         if (currentTab === 'locations' && (key === 'name' || key === 'parent_id')) renderTable();
     };
 
-    // ★ デバイスの3階層ロケーションを更新する関数
     window.updateDeviceLoc = function(index, level, val, lvl1, lvl2) {
         let newLoc = val;
-        // 未選択に戻された場合、上の階層のIDをセットする
         if (!val) {
             if (level === 3) newLoc = lvl2 || lvl1 || "";
             if (level === 2) newLoc = lvl1 || "";
@@ -324,7 +334,7 @@
         }
         db.devices[index].location_id = newLoc;
         updateDatalists();
-        renderTable(); // UIを再描画して子階層のプルダウンを切り替える
+        renderTable(); 
     };
 
     window.updateCableByLabel = function(index, key, label) {
@@ -374,6 +384,7 @@
             if (!tagList.includes(val)) {
                 tagList.push(val);
                 db.devices[index].tags = tagList.join(', ');
+                updateDatalists(); // ★ サジェストリストも更新
                 focusAfterRender = index;
                 renderTable();
             } else { inputElement.value = ''; }
@@ -384,6 +395,7 @@
         let tags = db.devices[index].tags || "";
         let tagList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove);
         db.devices[index].tags = tagList.join(', ');
+        updateDatalists(); // ★ サジェストリストも更新
         renderTable();
     };
 
@@ -393,6 +405,7 @@
         if (tagList.length > 0) {
             tagList.pop();
             db.devices[index].tags = tagList.join(', ');
+            updateDatalists(); // ★ サジェストリストも更新
             focusAfterRender = index;
             renderTable();
         }
@@ -523,7 +536,7 @@
         let headerHtml = displayColumns.map(col => {
             let label = col;
             if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
-            if (col === 'tags') label += ' <span class="hint-text">(⏎ Enterで確定)</span>';
+            if (col === 'tags') label += ' <span class="hint-text">(⏎ Enterで確定 / ✎ サジェスト)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
             if (col === 'parent_id' && currentTab === 'locations') label += ' <span class="hint-text">(親: 第2階層まで)</span>';
             return `<th>${label}</th>`;
@@ -552,7 +565,6 @@
                 const val = row[col] || "";
 
                 if (currentTab === 'devices' && col === 'location_id') {
-                    // ★ 3階層連動プルダウンの生成ロジック ★
                     const lineage = getLineage(val);
                     const lvl1Id = lineage[0] || "";
                     const lvl2Id = lineage[1] || "";
@@ -580,7 +592,6 @@
                     td.innerHTML = `<div style="display:flex; gap:4px; min-width:300px;">${sel1}${sel2}${sel3}</div>`;
                 }
                 else if (currentTab === 'locations' && col === 'parent_id') {
-                    // ★ 親ロケーションを「第2階層まで（深さ0, 1）」に制限 ★
                     const validParents = db.locations.filter(l => l.id !== row.id && getLocDepth(l.id) < 2);
                     const parentOptions = `<option value="">-- なし (最上位) --</option>` + 
                         validParents.map(l => {
@@ -609,7 +620,7 @@
                     td.innerHTML = `
                         <div class="tag-container" onclick="this.querySelector('input').focus()">
                             ${tagsHtml}
-                            <input type="text" class="tag-input" placeholder="${tagList.length === 0 ? 'タグを追加' : ''}"
+                            <input type="text" list="tagList" class="tag-input search-input" placeholder="${tagList.length === 0 ? 'タグを追加' : ''}"
                                 onkeydown="if(event.key === 'Enter' || event.key === ',') { addTag(${index}, this, event); } else if(event.key === 'Backspace' && this.value === '') { removeLastTag(${index}); }"
                                 onblur="if(this.value.trim()){ addTag(${index}, this); }">
                         </div>
