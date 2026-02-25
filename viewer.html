@@ -617,8 +617,9 @@
         function addSummary(pId) {
             const sums = summaryMap.get(pId);
             if (!sums) return;
+            let sumIdx = 0;
             for (const [tagName, count] of Object.entries(sums)) {
-                const sId = `sum_${pId}_${tagName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                const sId = `sum_${pId}_tag_${sumIdx++}`;
                 mermaidLines.push(`        ${sId}("☁️ ${tagName}<br/>(x${count} devs)")`);
                 mermaidLines.push(`        style ${sId} stroke-dasharray: 5 5, fill:#f9f9f9`);
                 mermaidLines.push(`        dev_${pId} -.-> ${sId}`);
@@ -634,9 +635,9 @@
                 groups.get(gName).push(d);
             });
 
+            let groupIndex = 0;
             Array.from(groups.keys()).sort().forEach(gName => {
-                let sId = gName.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '');
-                if (!sId) sId = `loc_${Math.floor(Math.random() * 1000)}`;
+                let sId = `loc_group_${groupIndex++}`;
                 mermaidLines.push(`    subgraph ${sId} ["🏢 ${gName}"]`);
                 groups.get(gName).sort((a, b) => distances.get(a.id) - distances.get(b.id)).forEach(d => {
                     mermaidLines.push(`        dev_${d.id}("${getIcon(d.role)} ${d.name}<br/>[${d.role || 'Role未定'}]")`);
