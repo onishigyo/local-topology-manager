@@ -131,7 +131,6 @@
 
     function toggleSidebar() { document.getElementById('settings-sidebar').classList.toggle('closed'); }
 
-    // アイコン取得関数（既存Viewerより移植）
     function getIcon(role) {
         const r = role || "";
         if (r.includes("Firewall")) return "🛡️";
@@ -226,6 +225,20 @@
             ids = ids.concat(getAllDescendants(child.id));
         });
         return ids;
+    }
+
+    // ★ 階層ごとのパスを取得するロジック（追加）
+    function getLineage(locId) {
+        let path = [];
+        let curr = locId;
+        let visited = new Set();
+        while (curr && !visited.has(curr)) {
+            visited.add(curr);
+            path.unshift(curr);
+            let loc = db.locations.find(l => l.id === curr);
+            curr = loc ? loc.parent_id : null;
+        }
+        return path;
     }
 
     function renderBuilding() {
@@ -346,13 +359,27 @@
                 devEl.id = `dev-${dev.id}`;
                 devEl.setAttribute('data-hop', hop);
                 
-                // 既存Viewerに合わせた表示形式
                 const icon = dev.isSummary ? '' : getIcon(dev.role);
                 const roleText = dev.isSummary ? '' : `[${dev.role || 'Role未定'}]`;
+                
+                // ★ 部屋・詳細情報をカード内にバッジ表示するロジック ★
+                let subLocStr = "";
+                if (!dev.isSummary && dev.location_id) {
+                    const lineage = getLineage(dev.location_id);
+                    // lineage[0]はフロア名なので除外。lineage[1]以降（部屋、詳細）を取得
+                    const subLocs = lineage.slice(1).map(id => {
+                        const l = db.locations.find(x => x.id === id);
+                        return l ? l.name : id;
+                    });
+                    if (subLocs.length > 0) {
+                        subLocStr = `<div style="font-size: 0.7rem; color: #3b82f6; margin-top: 6px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block; word-break: break-word; border: 1px solid #bfdbfe;">📍 ${subLocs.join(' > ')}</div>`;
+                    }
+                }
                 
                 devEl.innerHTML = `
                     <div class="dev-name">${icon} ${dev.name}</div>
                     <div class="dev-role">${roleText}</div>
+                    ${subLocStr}
                 `;
                 col.appendChild(devEl);
             });
@@ -396,7 +423,6 @@
             const rectA = elA.getBoundingClientRect();
             const rectB = elB.getBoundingClientRect();
             const floorA = elA.closest('.floor-row').getBoundingClientRect();
-            const floorB = elB.closest('.floor-row').getBoundingClientRect();
             
             const isSameFloor = elA.closest('.floor-row') === elB.closest('.floor-row');
             const strokeColor = cable.isSummary ? '#94a3b8' : lineColors[index % lineColors.length];
