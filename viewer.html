@@ -106,6 +106,9 @@
 
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.2); z-index: 50; display: none; opacity: 0; transition: opacity 0.3s; }
         #overlay.show { display: block; opacity: 1; }
+        
+        .loc-badge { background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.85rem; display: inline-flex; align-items: center; margin-right: 4px; margin-bottom: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
+        .loc-arrow { color: #94a3b8; margin-right: 4px; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -152,15 +155,14 @@
                 <label class="control-label">4. Layout Options (フロア表示)</label>
                 <label class="toggle-wrap">
                     <input type="checkbox" id="floorModeInput" onchange="document.getElementById('locDepthInput').disabled = !this.checked">
-                    Floor Mode (枠線で囲む) を有効にする
+                    ロケーション枠で囲む
                 </label>
                 <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 5px;">
-                    <span style="font-size: 0.85rem; font-weight: bold; color: #64748b;">表示する階層の深さ:</span>
+                    <span style="font-size: 0.85rem; font-weight: bold; color: #64748b;">どの単位で枠を区切りますか？:</span>
                     <select id="locDepthInput" disabled style="width: 100%;">
-                        <option value="0">Level 0 (フロアのみ)</option>
-                        <option value="1" selected>Level 1 (フロア / 部屋)</option>
-                        <option value="2">Level 2 (フロア / 部屋 / 詳細)</option>
-                        <option value="-1">すべて (フルパス)</option>
+                        <option value="0">フロア単位で囲む</option>
+                        <option value="1" selected>部屋単位で囲む (推奨)</option>
+                        <option value="2">詳細(盤・ラック)単位で囲む</option>
                     </select>
                 </div>
             </div>
@@ -199,7 +201,7 @@
             </div>
             <div class="detail-item">
                 <div class="detail-label">Location</div>
-                <div class="detail-value" id="panel-location">-</div>
+                <div class="detail-value" id="panel-location" style="background: transparent; border: none; padding: 0;">-</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Tags</div>
@@ -224,13 +226,12 @@
         sidebar.classList.toggle('closed');
     };
 
-    // 🔥 ファイル読み込みを YAML 対応に変更 🔥
     document.getElementById('fileInput').addEventListener('change', async (event) => {
         const file = event.target.files[0];
         if (!file) return;
         try {
             const text = await file.text();
-            const data = jsyaml.load(text); // JSON.parse から変更
+            const data = jsyaml.load(text);
             if (data.devices && data.cables && data.locations) {
                 db = data;
                 const statusEl = document.getElementById('dataStatus');
@@ -280,6 +281,7 @@
         }
     }
 
+    // ★ 階層ごとのパスを取得するロジック（そのまま）
     function getGroupName(locId, targetLevel) {
         if (!locId) return "未配置";
         const locLookup = new Map(db.locations.map(l => [l.id, l]));
@@ -305,7 +307,23 @@
 
         document.getElementById('panel-title').innerText = dev.name || 'Unknown Device';
         document.getElementById('panel-role').innerText = dev.role || '-';
-        document.getElementById('panel-location').innerText = getGroupName(dev.location_id, -1);
+        
+        // ★ 場所の表示を3階層のバッジでリッチに装飾 ★
+        const locString = getGroupName(dev.location_id, -1);
+        const locContainer = document.getElementById('panel-location');
+        if (locString === "未配置") {
+            locContainer.innerHTML = '<span style="color: #94a3b8; font-style: italic;">未配置</span>';
+        } else {
+            const parts = locString.split(' / ');
+            const icons = ['🏢', '🚪', '🗄️']; // フロア、部屋、詳細のアイコン
+            let html = '';
+            parts.forEach((p, i) => {
+                const icon = icons[i] || '📍';
+                const arrow = i > 0 ? `<span class="loc-arrow">＞</span>` : '';
+                html += `${arrow}<span class="loc-badge">${icon} ${p}</span>`;
+            });
+            locContainer.innerHTML = html;
+        }
         
         const tagsContainer = document.getElementById('panel-tags');
         if (dev.tags && dev.tags.length > 0) {
@@ -345,7 +363,6 @@
         const lPort = localPortName || '未設定';
         const rPort = remotePortName || '未設定';
         
-        // 🔥 ポート詳細（IP/MAC）があれば取得して表示 🔥
         let metaHtml = '';
         if (myPortsArray && Array.isArray(myPortsArray)) {
             const portData = myPortsArray.find(p => p.name === localPortName);
@@ -369,7 +386,6 @@
         portsList.appendChild(li);
     }
 
-    // --- (以降のPan/Zoom機能、Mermaid描画関数は変更なしのため省略せずそのまま) ---
     window.closePanel = function() {
         document.getElementById('detail-panel').classList.remove('open');
         document.getElementById('overlay').classList.remove('show');
