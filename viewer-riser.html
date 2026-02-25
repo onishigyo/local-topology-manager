@@ -62,10 +62,14 @@
 
         .device { background: white; border: 2px solid #94a3b8; border-radius: 6px; padding: 10px; width: 150px; min-height: 60px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; transition: 0.2s;}
         .device:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-color: var(--primary); }
+        
+        /* ★ ターゲット(主役)を青くハイライトするCSS */
+        .device.target-node { border-color: var(--primary); background: #eff6ff; border-width: 3px; }
+        
         .dev-name { font-size: 0.9rem; font-weight: bold; color: #1e293b; word-break: break-all;}
         .dev-role { font-size: 0.75rem; color: #64748b; }
         
-        .device.summary-cloud { border: 2px dashed #94a3b8; background: #f8fafc; color: #64748b; cursor: default; }
+        .device.summary-cloud { border: 2px dashed #94a3b8; background: #f8fafc; color: #64748b; cursor: default; border-width: 2px;}
         .device.summary-cloud:hover { transform: none; border-color: #94a3b8; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
         .cable-line { fill: none; stroke-width: 2.5px; stroke-linejoin: round; stroke-linecap: round; opacity: 0.85; transition: 0.2s;}
@@ -149,7 +153,7 @@
             const text = await file.text();
             const data = jsyaml.load(text);
             
-            // ★ マイグレーション処理 (EditorやViewerと同じ)
+            // マイグレーション処理
             if (data.devices) {
                 data.devices = data.devices.map(d => {
                     let sys = d.system || "";
@@ -167,7 +171,7 @@
             statusEl.classList.add('loaded');
             
             calculateAbsoluteDistances();
-            updateSystemUI(); // ★ タグじゃなくてSystemを抽出する関数に変更
+            updateSystemUI(); 
         } catch (e) {
             alert("読み込みエラー: " + e.message);
         }
@@ -205,7 +209,6 @@
         }
     }
 
-    // ★ TagsではなくSystemをリストアップするロジックに変更
     function updateSystemUI() {
         const container = document.getElementById('tagContainer');
         if (!db.devices || !db.devices.length) return;
@@ -258,29 +261,48 @@
     }
 
     function renderBuilding() {
-        // ★ activeTags を activeSystems に変更
         const activeSystems = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(cb => cb.value);
         if (activeSystems.length === 0) return alert("少なくとも1つのSystemを選択してください。");
 
-        // ★ d.tags ではなく d.system でフィルタリングするように変更
-        const filteredDevices = db.devices.filter(d => {
-            if (!d.system && activeSystems.includes('__UNTAGGED__')) return true;
-            if (d.system && activeSystems.includes(d.system)) return true;
-            return false;
+        // ★ 全デバイスのマップを作成（経路探索用）
+        const uniqueMap = new Map(db.devices.map(d => [d.id, d]));
+
+        // ★ 1. ターゲット（主役）となるノードを見つける
+        const targetNodes = new Set();
+        db.devices.forEach(d => {
+            if (!d.system && activeSystems.includes('__UNTAGGED__')) targetNodes.add(d.id);
+            else if (d.system && activeSystems.includes(d.system)) targetNodes.add(d.id);
         });
 
-        const uniqueMap = new Map(filteredDevices.map(d => [d.id, d]));
-        const deviceIds = new Set(uniqueMap.keys());
+        if (targetNodes.size === 0) return alert("条件に一致するデバイスがありません。");
+
+        // ★ 2. Smart Trace（ONUへの経路逆算）
+        const requiredNodes = new Set();
+        targetNodes.forEach(tId => {
+            let curr = tId;
+            requiredNodes.add(curr);
+            while (deviceDistances.get(curr) > 0 && deviceDistances.get(curr) !== 999) {
+                const parents = Array.from(globalAdj.get(curr)).filter(n => deviceDistances.get(n) === deviceDistances.get(curr) - 1);
+                if (parents.length > 0) { 
+                    curr = parents[0]; 
+                    requiredNodes.add(curr); 
+                } else break;
+            }
+        });
 
         const isNoLimit = document.getElementById('noLimitInput').checked;
         const maxDepth = isNoLimit ? 999 : (parseInt(document.getElementById('depthInput').value) || 3);
         
+        // ★ 3. 深度によるフィルタリング
         const visibleNodes = new Set();
-        deviceIds.forEach(id => { if (deviceDistances.get(id) <= maxDepth) visibleNodes.add(id); });
+        requiredNodes.forEach(id => { 
+            if (deviceDistances.get(id) <= maxDepth) visibleNodes.add(id); 
+        });
 
+        // ★ 4. 雲マーク（Summary）の集計：切り捨てられた「ターゲット機器」だけをカウント
         const summaryMap = new Map();
         if (!isNoLimit) {
-            deviceIds.forEach(id => {
+            targetNodes.forEach(id => {
                 if (visibleNodes.has(id)) return;
                 let current = id;
                 let ancestorFound = null;
@@ -295,7 +317,6 @@
                 if (ancestorFound) {
                     if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
                     const d = uniqueMap.get(id);
-                    // ★ 雲マーク（Summary）の集計も d.tags から d.system に変更
                     const sysName = d.system ? d.system : "Systemなし";
                     summaryMap.get(ancestorFound)[sysName] = (summaryMap.get(ancestorFound)[sysName] || 0) + 1;
                 }
@@ -317,6 +338,7 @@
             }
         });
 
+        // 描画対象の全デバイスリストを生成
         const renderableDevices = Array.from(visibleNodes).map(id => uniqueMap.get(id)).concat(virtualDevices);
         
         const container = document.getElementById('floor-list');
@@ -333,19 +355,21 @@
             let floorDevices = renderableDevices.filter(d => childLocIds.includes(d.location_id));
             floorDevices.forEach(d => assignedDeviceIds.add(d.id));
             if (floorDevices.length === 0) return;
-            createFloorRow(container, floor.name, floorDevices);
+            // ターゲット判定用のSetを渡す
+            createFloorRow(container, floor.name, floorDevices, targetNodes);
         });
 
         const orphanedDevices = renderableDevices.filter(d => !assignedDeviceIds.has(d.id));
         if (orphanedDevices.length > 0) {
-            createFloorRow(container, "未配置/外部", orphanedDevices, true);
+            createFloorRow(container, "未配置/外部", orphanedDevices, targetNodes, true);
         }
 
         toggleSidebar(); 
         setTimeout(() => drawCables(visibleNodes), 200);
     }
 
-    function createFloorRow(container, floorName, devices, isUnassigned = false) {
+    // ★ ターゲット判定用Setを受け取り、クラスを付与する
+    function createFloorRow(container, floorName, devices, targetNodes, isUnassigned = false) {
         const row = document.createElement('div');
         row.className = 'floor-row';
         if (isUnassigned) row.style.backgroundColor = "#f8fafc";
@@ -373,7 +397,13 @@
             
             hopGroups[hop].forEach(dev => {
                 const devEl = document.createElement('div');
-                devEl.className = dev.isSummary ? 'device summary-cloud' : 'device';
+                
+                // ★ ここで色付けのクラス（target-node）を付与！
+                let classNames = ['device'];
+                if (dev.isSummary) classNames.push('summary-cloud');
+                else if (targetNodes.has(dev.id)) classNames.push('target-node');
+                
+                devEl.className = classNames.join(' ');
                 devEl.id = `dev-${dev.id}`;
                 devEl.setAttribute('data-hop', hop);
                 
