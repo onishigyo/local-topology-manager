@@ -56,7 +56,8 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 - Solves the "spaghetti wiring" problem by implementing realistic "ceiling-bus" and "vertical-duct" routing algorithms, avoiding overlapping cables and intersecting boxes.
 
 #### 4. 📓 Optimized Export for Notion
-Generates perfectly formatted CSVs for Notion databases. Features a "Hybrid Display" (connected ports vertically, available ports horizontally) to keep Notion tables clean and highly readable.
+* Generates perfectly formatted CSVs for Notion databases.
+* Features a **Hybrid Display**: connected ports are listed vertically with details, while available ports are grouped as compact tags.
 <details>
 <summary>👀 Click to see CSV Output Example</summary>
 
@@ -118,7 +119,8 @@ Viewerで特定のシステム（例：`Lighting`）を選択して描画する�
 - 現実のケーブルラックやダクト配線を模倣した独自アルゴリズムにより、線が機器を貫通するカオス状態（スパゲッティ配線）を自動で回避し、図面としての美しさと実用性を両立しています。
 
 #### 4. 📓 Notionへのシームレスな出力（ハイブリッド表示）
-Notion等の資産管理データベースへインポートするためのCSVを出力します。接続済みポートは詳細に、空きポートは横並びの「タグ形式」で出力することで、Notion上での視認性と管理性を美しく両立しています。
+* Notion等の資産管理データベースへインポートするためのCSVを出力します。
+* **ハイブリッド表示**を採用：接続済みポートは詳細に、空きポートは横並びの「タグ形式」で出力し、視認性と管理性を両立します。
 <details>
 <summary>👀 CSV出力イメージを見る</summary>
 
