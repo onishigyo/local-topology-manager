@@ -68,6 +68,7 @@ Generates perfectly formatted CSVs for Notion databases. Features a "Hybrid Disp
 【Available】
 [LAN3] [LAN4] [LAN5] [LAN6] [LAN7] [LAN8]
 ```
+</details>
 
 ---
 
@@ -129,6 +130,7 @@ Notion等の資産管理データベースへインポートするためのCSV�
 【Available】
 [LAN3] [LAN4] [LAN5] [LAN6] [LAN7] [LAN8]
 ```
+</details>
 
 ### 🚀 使い方 (ローカル環境)
 
