@@ -27,12 +27,12 @@ Assign strictly ONE `System` to each device (multi-tags have been abolished).
 * **Shared Infrastructure:** Do NOT assign specific system names to shared pipes (e.g., ONUs, Core Routers, Floor L2SWs). Leave them blank or set them to `Infra`.
 * **Security & Maintenance:** Devices monitoring the entire network should be set to `Security` or `Maintenance`.
 
-#### 2. Smart Trace Visualization
+#### 2. Smart Trace & Multi-Path Routing
 When you filter by a specific system (e.g., `Lighting`) in the Viewer, the "Smart Trace" kicks in:
-1. Target devices (`Lighting`) are highlighted in **blue**.
-2. The tool automatically traces the uplink path to the core network (ONU).
-3. The required shared infrastructure on that path is automatically drawn in **white** standard boxes.
-> 💡 **Meaning:** You don't need to manually tag intermediate switches!
+1. **Target highlighting:** Target devices (`Lighting`) are highlighted in **blue**.
+2. **Multi-Path Tracing:** The tool automatically traces ALL upstream physical paths to the core network (ONU). It seamlessly handles redundant links and shared security appliances (e.g., a firewall spanning multiple VLANs/networks).
+3. **Bystander styling:** Any intermediate shared infrastructure or devices belonging to other systems that act as a "pass-through" are automatically drawn in **white** standard boxes.
+> 💡 **Meaning:** You don't need to manually tag intermediate switches! The UI keeps your focus entirely on the selected system.
 
 #### 3. 3-Level Location Input
 In the Editor, locations should be managed using the following 3-tier hierarchy:
@@ -44,23 +44,22 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 
 #### 1. 🗄️ Purpose-Built Bulk Editor (`editor.html`)
 - A dedicated tabular UI optimized for network configuration, featuring specific actions like **cable Swapping (⇄)** and **row reordering (⬆️⬇️)**.
+- **Strict Role Management:** Uses a standardized 11-role dropdown (e.g., `Router`, `Core Switch`, `Switch / Hub`) to maintain data integrity.
 - **Port & IP Management:** Manage physical ports, MAC addresses, and IP addresses (including Virtual IPs and Loopbacks) for each device.
-- **Smart Suggestion:** Automatically suggests available ports based on the selected device to prevent typos, along with device roles/locations/systems.
 
 #### 2. 🗺️ Interactive Topology Viewer (`viewer.html`)
 - Powered by `Mermaid.js`. Generates beautiful physical topology maps instantly.
 - **Hop-based Depth Control:** Limit the visualization depth by hop count, keeping large physical networks clean and readable.
-- **Intuitive Canvas:** Smooth zoom & pan controls targeting the mouse cursor for easy navigation. Click any device to see connected ports and IP details.
 
 #### 3. 🏢 Physical Riser Viewer (`viewer-riser.html`) [Beta]
 - Generates a physical riser diagram (elevation drawing) to visualize inter-floor backbones and real-world cable routing.
 - Solves the "spaghetti wiring" problem by implementing realistic "ceiling-bus" and "vertical-duct" routing algorithms, avoiding overlapping cables and intersecting boxes.
 
 #### 4. 📓 Optimized Export for Notion
-- Generates perfectly formatted CSVs for Notion databases.
-- **Hybrid Display:** Connected ports are listed vertically with details, while available ports are grouped horizontally in a compact "tag" style, keeping your Notion tables clean and highly readable.
+Generates perfectly formatted CSVs for Notion databases. Features a "Hybrid Display" (connected ports vertically, available ports horizontally) to keep Notion tables clean and highly readable.
+<details>
+<summary>👀 Click to see CSV Output Example</summary>
 
-#### 💡 CSV Output Image (Inside a Notion cell)
 ```text
 【Connected】
 🔗 LAN1: [IP:192.168.0.1, MAC:00:11...] ↔ (WAN) Core Router
@@ -70,52 +69,6 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 [LAN3] [LAN4] [LAN5] [LAN6] [LAN7] [LAN8]
 ```
 
-### 🚀 Quick Start (Local)
-
-You can try it out immediately without installing anything!
-
-1. **Clone or Download** this repository.
-2. Open `editor.html` in your web browser (Chrome/Edge/Safari).
-3. Click **"📂 Load YAML File"** and select `sample_project.yaml`.
-4. Edit the devices, ports, or cables, then click **"💾 Export YAML"** to save your changes.
-5. Open either `viewer.html` or `viewer-riser.html` in your browser, load the saved YAML, and click **"✨ Render Topology"**.
-
-### 🌍 Host as a Web App (GitHub Pages)
-
-Since this tool consists purely of HTML and Vanilla JS, you can instantly host it for free using **GitHub Pages**.
-1. Fork or push this repository to your GitHub account.
-2. Go to `Settings` > `Pages`.
-3. Select `main` branch as the source and save.
-4. Your topology manager is now live on the web, with 100% data processing done safely and locally in the browser!
-
-### 📂 Data Structure (YAML)
-
-The master data consists of three simple arrays: `devices`, `cables`, and `locations`. Highly readable and IaC-friendly.
-
-```yaml
-devices:
-  - id: dev_001
-    name: ISP Modem 01
-    role: ONU
-    location_id: loc_f1
-    system: Infra  # v2.0: Single system instead of multiple tags
-    ports:
-      - name: LAN1
-        ip: 192.168.0.1
-        mac: "00:11:22:AA:BB:01"
-
-cables:
-  - id: cab_001
-    device_a_id: dev_001
-    port_a: LAN1
-    device_b_id: dev_002
-    port_b: WAN
-
-locations:
-  - id: loc_f1
-    name: Floor 1
-    parent_id: null
-```
 ---
 
 ## 日本語ドキュメント
@@ -134,12 +87,12 @@ locations:
 * **共有インフラ**: 複数のシステムが相乗りする土管（ONU、コアルーター、各階L2SWなど）には、特定のシステム名を設定しないでください。代わりに `Infra` と入力するか、未設定にします。
 * **監視・保守機器**: インフラ全体を監視する機器は `Security` や `Maintenance` と設定します。
 
-#### 2. スマート・トレース機能（経路の自動逆算）
+#### 2. スマート・トレース機能（複数経路の自動逆算）
 Viewerで特定のシステム（例：`Lighting`）を選択して描画すると、以下の「スマート・トレース」が発動します。
 1. `Lighting` に設定された主役機器が**青色**でハイライトされます。
-2. その機器から、大元（ONU等）へ向かうケーブル経路をプログラムが自動的に逆算します。
-3. 経路上にある共有インフラ（無設定や `Infra` の機器）も自動的に巻き込んで、**白色**の通常枠として描画します。
-> 💡 **つまり、人間がわざわざ途中のルーターやスイッチに「Lighting」と入力する必要はありません！**
+2. その機器から、大元（ONU等）へ向かう物理ケーブルの経路をプログラムが「すべて」自動的に逆算します。**冗長化された経路や、複数のネットワークをまたいで監視するセキュリティ機器などの複雑な相乗り構成も正確に分岐して描画します。**
+3. 経路上にある共有インフラや、他システムの機器が「ただの通り道」として使われる場合、それらは自動的に巻き込まれ、目立たない**白色**の通常枠として描画されます。
+> 💡 **つまり「主役は青、脇役は白」の究極にシンプルなUIにより、人間がわざわざ途中のルーターやスイッチの設定を気にする必要はありません！**
 
 #### 3. ロケーション (Location) の3階層入力
 デバイスの配置場所は、Editor上で以下の3階層に分けて入力・管理します。
@@ -151,23 +104,23 @@ Viewerで特定のシステム（例：`Lighting`）を選択して描画する�
 
 #### 1. 🗄️ ネットワーク管理に特化したEditor (`editor.html`)
 - 専用のテーブルUIで大量のデータを効率よく編集できます。**結線の左右入れ替え（SWAP: ⇄）** や **行の上下移動（⬆️⬇️）** など、構成管理に便利なアクションを備えています。
+- **厳格なRole管理:** 表記揺れを防ぐため、11種類の標準的な役割（`Router`, `Core Switch`, `Switch / Hub`など）から選択するプルダウン方式を採用しています。
 - **ポート・IP管理:** 機器ごとにポート、IPアドレス（仮想IP・ループバック含む）、MACアドレスを管理できる専用UIを搭載。
-- **サジェスト機能:** 結線入力時、選択した機器が持つポートだけを賢くサジェストし、入力ミスを防ぎます（System名でのソートも可能）。
+- **サジェスト機能:** 結線入力時、選択した機器が持つポートだけを賢くサジェストし、入力ミスを防ぎます。
 
 #### 2. 🗺️ インタラクティブなViewer (`viewer.html`)
 - `Mermaid.js` による自動描画で、美しい物理トポロジー図を瞬時に生成します。機器をクリックするとポートやIPの詳細情報も確認できます。
 - **ホップ数による深さ制限:** 起点から何台先まで描画するか（ホップ数）を制御可能。規模の大きなネットワーク構成でも見やすく保つことができます。
-- マウスカーソルを中心に拡大・縮小できる、直感的で滑らかなキャンバス操作を実装しています。
 
 #### 3. 🏢 物理・立面系統図ビューア (`viewer-riser.html`) [Beta]
 - 実際の建築設備における「縦幹線（ライザー）と各階への配線ルート」を直感的に可視化する物理系統ビューアです。
 - 現実のケーブルラックやダクト配線を模倣した独自アルゴリズムにより、線が機器を貫通するカオス状態（スパゲッティ配線）を自動で回避し、図面としての美しさと実用性を両立しています。
 
 #### 4. 📓 Notionへのシームレスな出力（ハイブリッド表示）
-- Notion等の資産管理データベースへインポートするためのCSVを出力します。
-- **ハイブリッド表示:** 接続済みポートは詳細に、空きポートは横並びの「タグ形式」で出力することで、Notion上での視認性と管理性を美しく両立しています。
+Notion等の資産管理データベースへインポートするためのCSVを出力します。接続済みポートは詳細に、空きポートは横並びの「タグ形式」で出力することで、Notion上での視認性と管理性を美しく両立しています。
+<details>
+<summary>👀 CSV出力イメージを見る</summary>
 
-#### 💡 CSV出力のイメージ（Notionの1セル内）
 ```text
 【Connected】
 🔗 LAN1: [IP:192.168.0.1, MAC:00:11...] ↔ (WAN) Core Router
@@ -194,32 +147,3 @@ Viewerで特定のシステム（例：`Lighting`）を選択して描画する�
 2. リポジトリの `Settings` > `Pages` を開きます。
 3. Sourceとして `main` ブランチを選択して保存します。
 4. 数分後にはURLが発行され、どこからでもアクセス可能な構成管理ツールになります！（※データ処理はすべてブラウザのローカルで行われるため、機密データが外部サーバーに送信されることはなく安全です）
-
-### 📂 データ構造 (YAML)
-
-マスターデータは `devices`、`cables`、`locations` の3つのシンプルな配列で構成されています。人間が直接読み書きしやすいフォーマットです。
-
-```yaml
-devices:
-  - id: dev_001
-    name: ISP Modem 01
-    role: ONU
-    location_id: loc_f1
-    system: Infra  # v2.0新仕様: 1機器につき1システム
-    ports:
-      - name: LAN1
-        ip: 192.168.0.1
-        mac: "00:11:22:AA:BB:01"
-
-cables:
-  - id: cab_001
-    device_a_id: dev_001
-    port_a: LAN1
-    device_b_id: dev_002
-    port_b: WAN
-
-locations:
-  - id: loc_f1
-    name: Floor 1
-    parent_id: null
-```
