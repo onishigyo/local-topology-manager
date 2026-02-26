@@ -46,6 +46,7 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 - A dedicated tabular UI optimized for network configuration, featuring specific actions like **cable Swapping (⇄)** and **row reordering (⬆️⬇️)**.
 - **Strict Role Management:** Uses a standardized 11-role dropdown (e.g., `Router`, `Core Switch`, `Switch / Hub`) to maintain data integrity.
 - **Port & IP Management:** Manage physical ports, MAC addresses, and IP addresses (including Virtual IPs and Loopbacks) for each device.
+- **Smart Suggestions:** Intelligently suggests available ports based on the selected device to prevent input errors.
 
 #### 2. 🗺️ Interactive Topology Viewer (`viewer.html`)
 - Powered by `Mermaid.js`. Generates beautiful physical topology maps instantly.
@@ -70,6 +71,21 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 [LAN3] [LAN4] [LAN5] [LAN6] [LAN7] [LAN8]
 ```
 </details>
+
+### 🚀 Quick Start (Local Environment)
+No installation required. Download and run in seconds.
+1. **Clone or Download** this repository.
+2. Open `editor.html` in your web browser.
+3. Click **"📂 Load YAML File"** and select the included `sample_project.yaml`.
+4. Add or edit devices, cables, and ports, then click **"💾 Export YAML"** to save your changes locally.
+5. Open `viewer.html` or `viewer-riser.html`, load your saved YAML, and click **"✨ Generate Topology"** or **"✨ Render Building"**.
+
+### 🌍 Deploy as a Web App for your Team (GitHub Pages)
+Since this tool is built entirely with HTML and Vanilla JS, you can host it instantly and for free using **GitHub Pages**.
+1. Fork (or Push) this repository to your GitHub account.
+2. Go to your repository's `Settings` > `Pages`.
+3. Select the `main` branch as the Source and save.
+4. In a few minutes, your topology manager will be live and accessible from anywhere! *(Note: All data processing happens locally in the browser, so your sensitive network data is never sent to an external server.)*
 
 ---
 
