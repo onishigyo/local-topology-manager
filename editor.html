@@ -5,8 +5,9 @@
     <title>Editor | Local Topology Manager</title>
     <script src="./lib/js-yaml.min.js"></script>
     <style>
+        :root { --header-height: 60px; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; margin: 0; color: #333; }
-        .header { background-color: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header { background-color: #1e293b; color: white; height: var(--header-height); padding: 0 20px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; }
         .header h1 { margin: 0; font-size: 1.2rem; }
         .container { padding: 20px; max-width: 1400px; margin: auto; }
         
