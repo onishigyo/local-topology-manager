@@ -1,4 +1,4 @@
-# Local Topology Manager 🌐
+# Local Topology Manager (v2.0) 🌐
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Air-Gap Ready](https://img.shields.io/badge/Air--Gap-Ready-success)
