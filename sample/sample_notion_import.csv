@@ -1,0 +1,26 @@
+﻿Name,Role,Location,System,Ports & Connections
+Main ONU (MDF),ONU,1F / MDF Room,Infra,"【Connected】
+🔗 LAN1: [IP:192.168.0.1, MAC:00:11:22:AA:BB:01] ↔ (WAN) Core Facility Router
+
+【Available】
+[OPT]"
+Core Facility Router,Router,1F / MDF Room,Infra,"【Connected】
+🔗 WAN: [IP:192.168.0.2, MAC:00:11:22:AA:BB:02] ↔ (LAN1) Main ONU (MDF)
+🔗 LAN1: [IP:10.0.0.254] ↔ (Uplink) Backbone L3 Switch
+
+【Available】
+[LAN2] [Loopback0]"
+Backbone L3 Switch,Core Switch,1F / MDF Room,Infra,"【Connected】
+🔗 Uplink: ↔ (LAN1) Core Facility Router
+🔗 Port1: ↔ (Uplink) Lighting HUB
+🔗 Port2: ↔ (eth0) HVAC Field Controller
+🔗 Port3: ↔ (LAN) Entrance IP Camera"
+Lighting HUB,Switch / Hub,1F / EPS,Lighting,"【Connected】
+🔗 Uplink: ↔ (Port1) Backbone L3 Switch
+
+【Available】
+[Port1] [Port2]"
+HVAC Field Controller,Controller,1F / EPS,HVAC,"【Connected】
+🔗 eth0: [IP:10.0.1.10, MAC:00:11:22:CC:DD:01] ↔ (Port2) Backbone L3 Switch"
+Entrance IP Camera,Sensor / Camera,1F / Entrance,Security,"【Connected】
+🔗 LAN: [IP:10.0.2.50] ↔ (Port3) Backbone L3 Switch"

@@ -1,0 +1,132 @@
+devices:
+  - id: dev_onu
+    name: Main ONU (MDF)
+    role: ONU
+    location_id: loc_mdf
+    system: Infra
+    ports:
+      - name: OPT
+        ip: null
+        mac: null
+      - name: LAN1
+        ip: 192.168.0.1
+        mac: 00:11:22:AA:BB:01
+  - id: dev_core_rt
+    name: Core Facility Router
+    role: Router
+    location_id: loc_mdf
+    system: Infra
+    ports:
+      - name: WAN
+        ip: 192.168.0.2
+        mac: 00:11:22:AA:BB:02
+      - name: LAN1
+        ip: 10.0.0.254
+        mac: null
+      - name: LAN2
+        ip: 10.0.1.254
+        mac: null
+      - name: Loopback0
+        ip: 10.255.255.1
+        mac: null
+  - id: dev_core_sw
+    name: Backbone L3 Switch
+    role: Core Switch
+    location_id: loc_mdf
+    system: Infra
+    ports:
+      - name: Uplink
+        ip: null
+        mac: null
+      - name: Port1
+        ip: null
+        mac: null
+      - name: Port2
+        ip: null
+        mac: null
+      - name: Port3
+        ip: null
+        mac: null
+  - id: dev_sw_lighting
+    name: Lighting HUB
+    role: Switch / Hub
+    location_id: loc_eps
+    system: Lighting
+    ports:
+      - name: Uplink
+        ip: null
+        mac: null
+      - name: Port1
+        ip: null
+        mac: null
+      - name: Port2
+        ip: null
+        mac: null
+  - id: dev_ctrl_hvac
+    name: HVAC Field Controller
+    role: Controller
+    location_id: loc_eps
+    system: HVAC
+    ports:
+      - name: eth0
+        ip: 10.0.1.10
+        mac: 00:11:22:CC:DD:01
+  - id: dev_cam_sec
+    name: Entrance IP Camera
+    role: Sensor / Camera
+    location_id: loc_ent
+    system: Security
+    ports:
+      - name: LAN
+        ip: 10.0.2.50
+        mac: null
+
+cables:
+  - id: cab_001
+    device_a_id: dev_onu
+    port_a: LAN1
+    device_b_id: dev_core_rt
+    port_b: WAN
+  - id: cab_002
+    device_a_id: dev_core_rt
+    port_a: LAN1
+    device_b_id: dev_core_sw
+    port_b: Uplink
+  - id: cab_003
+    device_a_id: dev_core_sw
+    port_a: Port1
+    device_b_id: dev_sw_lighting
+    port_b: Uplink
+  - id: cab_004
+    device_a_id: dev_core_sw
+    port_a: Port2
+    device_b_id: dev_ctrl_hvac
+    port_b: eth0
+  - id: cab_005
+    device_a_id: dev_core_sw
+    port_a: Port3
+    device_b_id: dev_cam_sec
+    port_b: LAN
+
+locations:
+  - id: loc_rf
+    name: RF
+    parent_id: null
+  - id: loc_2f
+    name: 2F
+    parent_id: null
+  - id: loc_1f
+    name: 1F
+    parent_id: null
+  - id: loc_ent
+    name: Entrance
+    parent_id: loc_1f
+  - id: loc_eps
+    name: EPS
+    parent_id: loc_1f
+  - id: loc_mdf
+    name: MDF Room
+    parent_id: loc_1f
+  - id: loc_b1f
+    name: B1F
+    parent_id: null
