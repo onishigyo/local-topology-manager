@@ -5,14 +5,17 @@
 .LSOverride
 Thumbs.db
 
-# Personal data (Not for GitHub)
+# Personal data
 data/
 
-# Ignore YAML and CSV by default
+# Global ignore rules for data files
 *.yaml
 *.yml
 *.csv
 
-# BUT allow everything inside sample/ and lib/
-!sample/**
-!lib/**
+# Whitelist specific assets in sample and lib folders
+!sample/*.yaml
+!sample/*.yml
+!lib/*.js
+!lib/*.css
+!lib/*.min.js
