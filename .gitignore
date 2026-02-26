@@ -8,9 +8,11 @@ Thumbs.db
 # Personal data (Not for GitHub)
 data/
 
-# Ignore YAML and CSV by default (except for sample/ and lib/)
+# Ignore YAML and CSV by default
 *.yaml
 *.yml
 *.csv
-!sample/
-!lib/
+
+# BUT allow everything inside sample/ and lib/
+!sample/**
+!lib/**
