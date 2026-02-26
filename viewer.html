@@ -407,22 +407,64 @@
             }
         });
 
-        let roots = db.devices.filter(d => (d.role || "") === "ONU").map(d => d.id);
-        if (!roots.length) roots = db.devices.filter(d => (d.role || "") === "External Router").map(d => d.id);
-        if (!roots.length) roots = db.devices.filter(d => (d.role || "").includes("External")).map(d => d.id);
-        if (!roots.length) roots = [db.devices[0].id];
-
         const distances = new Map();
         deviceIds.forEach(id => distances.set(id, 999));
-        const queue = [];
-        roots.forEach(r => { distances.set(r, 0); queue.push(r); });
+        const visitedComp = new Set();
 
-        while (queue.length > 0) {
-            const u = queue.shift();
-            adj.get(u).forEach(v => {
-                if (distances.get(v) === 999) { distances.set(v, distances.get(u) + 1); queue.push(v); }
-            });
-        }
+        // ★ 島（物理的に繋がっているネットワークの塊）ごとに処理
+        deviceIds.forEach(startId => {
+            if (!visitedComp.has(startId)) {
+                // 1. この島に属する全機器をリストアップ
+                const island = [];
+                const q = [startId];
+                visitedComp.add(startId);
+                while (q.length > 0) {
+                    const u = q.shift();
+                    island.push(u);
+                    adj.get(u).forEach(v => {
+                        if (!visitedComp.has(v)) { visitedComp.add(v); q.push(v); }
+                    });
+                }
+
+                // 2. この島の「大元（ホップ0）」を決める（厳格な勝ち抜き戦・【複数対応】）
+                let rootsInIsland = [];
+                const getRole = (id) => uniqueMap.get(id).role || "";
+                
+                // 第1優先: ONU（島の中に複数ある場合は「すべて」を起点にする）
+                rootsInIsland = island.filter(id => getRole(id) === "ONU");
+                // 第2優先: Router（過去データ用にExternalも許容）
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Router" || getRole(id).includes("External"));
+                }
+                // 第3優先: Gateway または Firewall
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Gateway" || getRole(id) === "Firewall" || getRole(id).includes("Integration"));
+                }
+                // 第4優先: Core Switch
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Core Switch");
+                }
+                // 第5優先: Switch / Hub
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id).includes("Switch") || getRole(id).includes("HUB"));
+                }
+                // 最終手段: どれもなければ、一番線の数が多い機器を暫定トップにする
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = [island.reduce((a, b) => adj.get(a).size > adj.get(b).size ? a : b)];
+                }
+
+                // 3. 決定した大元「たち」から距離（ホップ数）を同時に計算
+                const qDist = [...rootsInIsland];
+                rootsInIsland.forEach(r => distances.set(r, 0));
+                
+                while (qDist.length > 0) {
+                    const u = qDist.shift();
+                    adj.get(u).forEach(v => {
+                        if (distances.get(v) === 999) { distances.set(v, distances.get(u) + 1); qDist.push(v); }
+                    });
+                }
+            }
+        });
 
         const targetNodes = new Set();
         if (hasAnySystems) {
@@ -436,14 +478,53 @@
 
         if (targetNodes.size === 0) return alert("条件に一致するデバイスがありません。");
 
+        // ★ DAG（有向非巡回グラフ）のためのRole階級判定関数
+        function getRoleRank(r) {
+            if (!r) return 99;
+            if (r === "ONU") return 0;
+            if (r === "Router" || r.includes("External")) return 1;
+            if (r === "Gateway" || r === "Firewall" || r.includes("Integration")) return 2;
+            if (r === "Core Switch") return 3;
+            if (r.includes("Switch") || r.includes("HUB")) return 4;
+            if (r === "Wireless AP" || r.includes("AP")) return 5;
+            if (r === "Controller") return 6;
+            if (r === "Server") return 7;
+            if (r === "Sensor / Camera" || r === "Endpoint" || r.includes("Equipment")) return 8;
+            return 99;
+        }
+
+        // ★ ノードuがノードvの「親（大元側）」であるかを正確に判定する関数
+        function isParent(u, v) {
+            const dU = distances.get(u);
+            const dV = distances.get(v);
+            if (dU < dV) return true; // ホップ数が少ないなら文句なしで親
+            if (dU === dV) {
+                // ホップ数が同じ場合は、Roleの「格」で上下関係を決める
+                const rU = getRoleRank(uniqueMap.get(u).role);
+                const rV = getRoleRank(uniqueMap.get(v).role);
+                if (rU < rV) return true;
+                if (rU === rV) return u < v; // 無限ループ防止用のタイブレーカー
+            }
+            return false;
+        }
+
+        // ★ あなたのアイデア：主役から大元に向かって「すべての」親ルートを辿る！
         const requiredNodes = new Set();
         targetNodes.forEach(tId => {
-            let curr = tId;
-            requiredNodes.add(curr);
-            while (distances.get(curr) > 0 && distances.get(curr) !== 999) {
-                const parents = Array.from(adj.get(curr)).filter(n => distances.get(n) === distances.get(curr) - 1);
-                if (parents.length > 0) { curr = parents[0]; requiredNodes.add(curr); } 
-                else break;
+            const upQueue = [tId];
+            requiredNodes.add(tId);
+            
+            while(upQueue.length > 0) {
+                const curr = upQueue.shift();
+                // 自分に繋がっている機器のうち「親」に該当するものをすべて遡る
+                Array.from(adj.get(curr)).forEach(neighbor => {
+                    if (isParent(neighbor, curr)) {
+                        if (!requiredNodes.has(neighbor)) {
+                            requiredNodes.add(neighbor);
+                            upQueue.push(neighbor); // 分岐した親もすべてキューに入れて辿る
+                        }
+                    }
+                });
             }
         });
 
@@ -453,18 +534,26 @@
         const visibleNodes = new Set();
         requiredNodes.forEach(id => { if (distances.get(id) <= maxDepth) visibleNodes.add(id); });
 
+        // ★ 隠れたノードの雲（Summary）を作成するロジックも新仕様に同期
         const summaryMap = new Map();
         if (!isNoLimit) {
             targetNodes.forEach(id => {
                 if (visibleNodes.has(id)) return;
-                let current = id; let ancestorFound = null;
-                while (distances.get(current) > 0 && distances.get(current) !== 999) {
-                    const parents = Array.from(adj.get(current)).filter(n => distances.get(n) === distances.get(current) - 1);
-                    if (!parents.length) break;
-                    const parent = parents[0];
-                    if (visibleNodes.has(parent)) { ancestorFound = parent; break; }
-                    current = parent;
+                
+                let ancestorFound = null;
+                const q = [id];
+                const visited = new Set([id]);
+                
+                while (q.length > 0) {
+                    const curr = q.shift();
+                    const parents = Array.from(adj.get(curr)).filter(n => isParent(n, curr));
+                    for (const p of parents) {
+                        if (visibleNodes.has(p)) { ancestorFound = p; break; }
+                        if (!visited.has(p)) { visited.add(p); q.push(p); }
+                    }
+                    if (ancestorFound) break;
                 }
+                
                 if (ancestorFound) {
                     if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
                     const d = uniqueMap.get(id);
@@ -479,11 +568,17 @@
 
         let mermaidLines = ["graph TD"];
         
+        // ★ 最新の11種の固定Roleに完全対応したアイコン判定
         function getIcon(role) {
             const r = role || "";
-            if (r.includes("Firewall")) return "🛡️"; if (r.includes("Switch") || r.includes("HUB")) return "🔀";
-            if (r.includes("AP") || r.includes("Wireless")) return "📡"; if (r.includes("Router") || r.includes("ONU") || r.includes("External") || r.includes("Gateway")) return "🌐";
-            if (r.includes("Server")) return "🖥️"; if (r.includes("Controller")) return "⚙️"; return "📦"; 
+            if (r === "Firewall") return "🛡️"; 
+            if (r === "Core Switch" || r === "Switch / Hub") return "🔀";
+            if (r === "Wireless AP") return "📡"; 
+            if (r === "Router" || r === "ONU" || r === "Gateway") return "🌐";
+            if (r === "Server") return "🖥️"; 
+            if (r === "Controller") return "⚙️"; 
+            if (r === "Sensor / Camera" || r === "Endpoint") return "📱";
+            return "📦"; 
         }
 
         function addSummary(pId) {
@@ -499,6 +594,17 @@
         }
 
         const styleLines = [];
+
+        // ★ 色塗りの共通関数（Infraの特別扱いを廃止）
+        function applyStyle(d) {
+            if (targetNodes.has(d.id)) {
+                // 🔵 主役（ユーザーがチェックを入れたシステム）は例外なく青色
+                styleLines.push(`    style dev_${d.id} fill:#eff6ff,stroke:#3b82f6,stroke-width:3px`);
+            } else {
+                // ⚪️ 脇役（ただの通り道）は例外なく白色
+                styleLines.push(`    style dev_${d.id} fill:#ffffff,stroke:#cbd5e1,stroke-width:1px`);
+            }
+        }
 
         if (isFloorMode) {
             const groups = new Map();
@@ -516,7 +622,7 @@
                 groups.get(gName).sort((a, b) => distances.get(a.id) - distances.get(b.id)).forEach(d => {
                     mermaidLines.push(`        dev_${d.id}("${getIcon(d.role)} ${d.name}<br/>[${d.role || 'Role未定'}]")`);
                     mermaidLines.push(`        click dev_${d.id} call showDeviceDetails("${d.id}")`);
-                    if (targetNodes.has(d.id)) styleLines.push(`    style dev_${d.id} fill:#eff6ff,stroke:#3b82f6,stroke-width:3px`);
+                    applyStyle(d);
                     addSummary(d.id);
                 });
                 mermaidLines.push("    end");
@@ -526,16 +632,18 @@
                 const d = uniqueMap.get(id);
                 mermaidLines.push(`    dev_${id}("${getIcon(d.role)} ${d.name}<br/>[${d.role || 'Role未定'}]")`);
                 mermaidLines.push(`    click dev_${id} call showDeviceDetails("${d.id}")`);
-                if (targetNodes.has(d.id)) styleLines.push(`    style dev_${d.id} fill:#eff6ff,stroke:#3b82f6,stroke-width:3px`);
+                applyStyle(d);
                 addSummary(id);
             });
         }
 
+        // ★ 矢印の向きも完全な上下関係に合わせる
         db.cables.forEach(c => {
             const a = c.device_a_id; const b = c.device_b_id;
             if (visibleNodes.has(a) && visibleNodes.has(b)) {
-                if (distances.get(a) <= distances.get(b)) mermaidLines.push(`    dev_${a} --> dev_${b}`);
-                else mermaidLines.push(`    dev_${b} --> dev_${a}`);
+                if (isParent(a, b)) mermaidLines.push(`    dev_${a} --> dev_${b}`);
+                else if (isParent(b, a)) mermaidLines.push(`    dev_${b} --> dev_${a}`);
+                else mermaidLines.push(`    dev_${a} --- dev_${b}`); // 安全策
             }
         });
 

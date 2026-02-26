@@ -119,13 +119,11 @@
     </div>
 </div>
 
-<datalist id="roleList"></datalist>
 <datalist id="deviceList"></datalist>
 <datalist id="dynamicPortList"></datalist>
 <datalist id="systemList"></datalist>
 
 <script>
-    // ★ tags を廃止し、system に変更
     const schemas = {
         devices: ['id', 'name', 'role', 'location_id', 'system', 'ports'],
         cables: ['device_a_id', 'port_a', 'device_b_id', 'port_b'],
@@ -147,7 +145,6 @@
             
             if (data.devices) {
                 data.devices = data.devices.map(d => {
-                    // ★ マイグレーション処理：古いtagsが存在すれば、最初の1つをsystemに変換
                     let sys = d.system || "";
                     if (!sys && d.tags) {
                         let t = Array.isArray(d.tags) ? d.tags : d.tags.split(',');
@@ -278,8 +275,6 @@
     }
 
     function updateDatalists() {
-        const roles = [...new Set(db.devices.map(d => d.role).filter(r => r))].sort();
-        document.getElementById('roleList').innerHTML = roles.map(r => `<option value="${r}">`).join('');
         const deviceLabels = db.devices.map(d => `<option value="${getDeviceLabel(d)}">`).join('');
         document.getElementById('deviceList').innerHTML = deviceLabels;
 
@@ -393,7 +388,7 @@
         tbody.innerHTML = '';
 
         if (currentTab === 'cables') {
-            thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th><th>Device A 🔍</th><th>Port A</th><th style="width: 50px; text-align: center;">Swap</th><th>Port B</th><th>Device B 🔍</th><th style="width: 60px; text-align: center;">Delete</th>`;
+            thead.innerHTML = `<th style="width: 80px; text-align: center;">Move</th><th>Device A 🔍</th><th style="width: 120px;">Port A</th><th style="width: 50px; text-align: center;">Swap</th><th style="width: 120px;">Port B</th><th>Device B 🔍</th><th style="width: 60px; text-align: center;">Delete</th>`;
             if (data.length === 0) { tbody.innerHTML = `<tr><td colspan="7" class="empty-state">データがありません。</td></tr>`; return; }
             data.forEach((row, index) => {
                 const tr = document.createElement('tr');
@@ -414,13 +409,11 @@
             return;
         }
 
-        // ★ ヘッダーのラベル表示を整えるロジック
         let headerHtml = displayColumns.map(col => {
-            // 基本：頭文字を大文字にし、_id などを消す（name -> Name, ports -> Ports）
             let label = col.charAt(0).toUpperCase() + col.slice(1).replace('_id', '');
             
-            // 個別の補足説明を追加
-            if (col === 'role') label += ' <span class="hint-text">(✎ サジェスト)</span>';
+            // ★ Role のヒントをプルダウンに変更
+            if (col === 'role') label += ' <span class="hint-text">(プルダウン選択)</span>';
             if (col === 'system') label += ' <span class="hint-text">(所属システム)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
             if (col === 'parent_id' && currentTab === 'locations') label = 'Parent Location <span class="hint-text">(親: 第2階層まで)</span>';
@@ -459,10 +452,32 @@
                 else if (currentTab === 'locations' && col === 'name') {
                     td.innerHTML = `<div style="display: flex; align-items: center; padding-left: ${getLocDepth(row.id) * 20}px;">${getLocDepth(row.id) > 0 ? `<span class="tree-dot">・</span>` : ``}<input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;"></div>`;
                 }
+                // ★ Role を厳格なプルダウンに変更
                 else if (currentTab === 'devices' && col === 'role') {
-                    td.innerHTML = `<input type="text" list="roleList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Access Switch">`;
+                    const standardRoles = {
+                        "🌐 外部・境界 (起点)": ["ONU", "Router", "Gateway", "Firewall"],
+                        "🔀 分配・中継": ["Core Switch", "Switch / Hub"],
+                        "📡 無線通信": ["Wireless AP"],
+                        "🖥️ 終端・エッジ": ["Server", "Controller", "Sensor / Camera", "Endpoint"]
+                    };
+                    
+                    let optionsHtml = `<option value="">-- 未設定 --</option>`;
+                    for (const [group, roles] of Object.entries(standardRoles)) {
+                        optionsHtml += `<optgroup label="${group}">`;
+                        roles.forEach(r => {
+                            const selected = (val === r) ? "selected" : "";
+                            optionsHtml += `<option value="${r}" ${selected}>${r}</option>`;
+                        });
+                        optionsHtml += `</optgroup>`;
+                    }
+                    
+                    const isStandard = Object.values(standardRoles).flat().includes(val);
+                    if (val && !isStandard) {
+                        optionsHtml += `<optgroup label="⚠️ カスタム (過去データ)"><option value="${val}" selected>${val}</option></optgroup>`;
+                    }
+
+                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)" style="width: 100%; padding: 6px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc;">${optionsHtml}</select>`;
                 }
-                // ★ 新設された System 用の入力欄
                 else if (currentTab === 'devices' && col === 'system') {
                     td.innerHTML = `<input type="text" list="systemList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Lighting">`;
                 }
@@ -497,7 +512,6 @@
     window.exportData = function(format) {
         const d = new Date(); const dateStr = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}`;
         if (format === 'yaml') {
-            // 書き出す時も新フォーマット
             const yamlStr = jsyaml.dump({ devices: db.devices, cables: db.cables, locations: db.locations }, { lineWidth: -1 });
             downloadFile(`topology_data_${dateStr}.yaml`, yamlStr, 'text/yaml');
         } else if (format === 'notion') {

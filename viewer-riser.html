@@ -135,14 +135,16 @@
 
     function toggleSidebar() { document.getElementById('settings-sidebar').classList.toggle('closed'); }
 
+    // ★ 最新の11種類のRoleに対応したアイコン判定
     function getIcon(role) {
         const r = role || "";
-        if (r.includes("Firewall")) return "🛡️";
-        if (r.includes("Switch") || r.includes("HUB")) return "🔀";
-        if (r.includes("AP") || r.includes("Wireless")) return "📡";
-        if (r.includes("Router") || r.includes("ONU") || r.includes("External") || r.includes("Gateway")) return "🌐";
-        if (r.includes("Server")) return "🖥️";
-        if (r.includes("Controller")) return "⚙️";
+        if (r === "Firewall") return "🛡️"; 
+        if (r === "Core Switch" || r === "Switch / Hub") return "🔀";
+        if (r === "Wireless AP") return "📡"; 
+        if (r === "Router" || r === "ONU" || r === "Gateway") return "🌐";
+        if (r === "Server") return "🖥️"; 
+        if (r === "Controller") return "⚙️"; 
+        if (r === "Sensor / Camera" || r === "Endpoint") return "📱";
         return "📦"; 
     }
 
@@ -177,6 +179,7 @@
         }
     });
 
+    // ★ 孤立した島を救済する（複数ルート対応の）絶対距離計算ロジック
     function calculateAbsoluteDistances() {
         deviceDistances.clear();
         globalAdj.clear();
@@ -190,23 +193,54 @@
             }
         });
 
-        let roots = db.devices.filter(d => (d.role || "") === "ONU").map(d => d.id);
-        if (!roots.length) roots = db.devices.filter(d => (d.role || "") === "External Router").map(d => d.id);
-        if (!roots.length) roots = db.devices.filter(d => (d.role || "").match(/External|Gateway/i)).map(d => d.id);
-        if (!roots.length && db.devices.length > 0) roots = [db.devices[0].id];
-
-        const queue = [];
-        roots.forEach(r => { deviceDistances.set(r, 0); queue.push(r); });
-
-        while (queue.length > 0) {
-            const u = queue.shift();
-            globalAdj.get(u).forEach(v => {
-                if (deviceDistances.get(v) === 999) {
-                    deviceDistances.set(v, deviceDistances.get(u) + 1);
-                    queue.push(v);
+        const uniqueMap = new Map(db.devices.map(d => [d.id, d]));
+        const visitedComp = new Set();
+        
+        db.devices.forEach(startDev => {
+            const startId = startDev.id;
+            if (!visitedComp.has(startId)) {
+                const island = [];
+                const q = [startId];
+                visitedComp.add(startId);
+                while (q.length > 0) {
+                    const u = q.shift();
+                    island.push(u);
+                    globalAdj.get(u).forEach(v => {
+                        if (!visitedComp.has(v)) { visitedComp.add(v); q.push(v); }
+                    });
                 }
-            });
-        }
+
+                let rootsInIsland = [];
+                const getRole = (id) => uniqueMap.get(id).role || "";
+                
+                rootsInIsland = island.filter(id => getRole(id) === "ONU");
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Router" || getRole(id).includes("External"));
+                }
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Gateway" || getRole(id) === "Firewall" || getRole(id).includes("Integration"));
+                }
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id) === "Core Switch");
+                }
+                if (rootsInIsland.length === 0) {
+                    rootsInIsland = island.filter(id => getRole(id).includes("Switch") || getRole(id).includes("HUB"));
+                }
+                if (rootsInIsland.length === 0 && island.length > 0) {
+                    rootsInIsland = [island.reduce((a, b) => globalAdj.get(a).size > globalAdj.get(b).size ? a : b)];
+                }
+
+                const qDist = [...rootsInIsland];
+                rootsInIsland.forEach(r => deviceDistances.set(r, 0));
+                
+                while (qDist.length > 0) {
+                    const u = qDist.shift();
+                    globalAdj.get(u).forEach(v => {
+                        if (deviceDistances.get(v) === 999) { deviceDistances.set(v, deviceDistances.get(u) + 1); qDist.push(v); }
+                    });
+                }
+            }
+        });
     }
 
     function updateSystemUI() {
@@ -264,7 +298,6 @@
         const activeSystems = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(cb => cb.value);
         if (activeSystems.length === 0) return alert("少なくとも1つのSystemを選択してください。");
 
-        // ★ 全デバイスのマップを作成（経路探索用）
         const uniqueMap = new Map(db.devices.map(d => [d.id, d]));
 
         // ★ 1. ターゲット（主役）となるノードを見つける
@@ -276,17 +309,51 @@
 
         if (targetNodes.size === 0) return alert("条件に一致するデバイスがありません。");
 
-        // ★ 2. Smart Trace（ONUへの経路逆算）
+        // ★ DAG（有向非巡回グラフ）のためのRole階級判定関数
+        function getRoleRank(r) {
+            if (!r) return 99;
+            if (r === "ONU") return 0;
+            if (r === "Router" || r.includes("External")) return 1;
+            if (r === "Gateway" || r === "Firewall" || r.includes("Integration")) return 2;
+            if (r === "Core Switch") return 3;
+            if (r.includes("Switch") || r.includes("HUB")) return 4;
+            if (r === "Wireless AP" || r.includes("AP")) return 5;
+            if (r === "Controller") return 6;
+            if (r === "Server") return 7;
+            if (r === "Sensor / Camera" || r === "Endpoint" || r.includes("Equipment")) return 8;
+            return 99;
+        }
+
+        // ★ ノードuがノードvの「親（大元側）」であるかを正確に判定する関数
+        function isParent(u, v) {
+            const dU = deviceDistances.get(u);
+            const dV = deviceDistances.get(v);
+            if (dU < dV) return true;
+            if (dU === dV) {
+                const rU = getRoleRank(uniqueMap.get(u).role);
+                const rV = getRoleRank(uniqueMap.get(v).role);
+                if (rU < rV) return true;
+                if (rU === rV) return u < v;
+            }
+            return false;
+        }
+
+        // ★ 2. Smart Trace（すべての親を辿る全経路探索！）
         const requiredNodes = new Set();
         targetNodes.forEach(tId => {
-            let curr = tId;
-            requiredNodes.add(curr);
-            while (deviceDistances.get(curr) > 0 && deviceDistances.get(curr) !== 999) {
-                const parents = Array.from(globalAdj.get(curr)).filter(n => deviceDistances.get(n) === deviceDistances.get(curr) - 1);
-                if (parents.length > 0) { 
-                    curr = parents[0]; 
-                    requiredNodes.add(curr); 
-                } else break;
+            const upQueue = [tId];
+            requiredNodes.add(tId);
+            
+            while(upQueue.length > 0) {
+                const curr = upQueue.shift();
+                Array.from(globalAdj.get(curr)).forEach(neighbor => {
+                    if (isParent(neighbor, curr)) {
+                        if (!requiredNodes.has(neighbor)) {
+                            requiredNodes.add(neighbor);
+                            upQueue.push(neighbor);
+                        }
+                    }
+                });
             }
         });
 
@@ -299,21 +366,25 @@
             if (deviceDistances.get(id) <= maxDepth) visibleNodes.add(id); 
         });
 
-        // ★ 4. 雲マーク（Summary）の集計：切り捨てられた「ターゲット機器」だけをカウント
+        // ★ 4. 雲マーク（Summary）の集計
         const summaryMap = new Map();
         if (!isNoLimit) {
             targetNodes.forEach(id => {
                 if (visibleNodes.has(id)) return;
-                let current = id;
                 let ancestorFound = null;
+                const q = [id];
+                const visited = new Set([id]);
                 
-                while (deviceDistances.get(current) > 0 && deviceDistances.get(current) !== 999) {
-                    const parents = Array.from(globalAdj.get(current)).filter(n => deviceDistances.get(n) === deviceDistances.get(current) - 1);
-                    if (!parents.length) break;
-                    const parent = parents[0];
-                    if (visibleNodes.has(parent)) { ancestorFound = parent; break; }
-                    current = parent;
+                while (q.length > 0) {
+                    const curr = q.shift();
+                    const parents = Array.from(globalAdj.get(curr)).filter(n => isParent(n, curr));
+                    for (const p of parents) {
+                        if (visibleNodes.has(p)) { ancestorFound = p; break; }
+                        if (!visited.has(p)) { visited.add(p); q.push(p); }
+                    }
+                    if (ancestorFound) break;
                 }
+                
                 if (ancestorFound) {
                     if (!summaryMap.has(ancestorFound)) summaryMap.set(ancestorFound, {});
                     const d = uniqueMap.get(id);
@@ -355,7 +426,6 @@
             let floorDevices = renderableDevices.filter(d => childLocIds.includes(d.location_id));
             floorDevices.forEach(d => assignedDeviceIds.add(d.id));
             if (floorDevices.length === 0) return;
-            // ターゲット判定用のSetを渡す
             createFloorRow(container, floor.name, floorDevices, targetNodes);
         });
 
@@ -368,7 +438,6 @@
         setTimeout(() => drawCables(visibleNodes), 200);
     }
 
-    // ★ ターゲット判定用Setを受け取り、クラスを付与する
     function createFloorRow(container, floorName, devices, targetNodes, isUnassigned = false) {
         const row = document.createElement('div');
         row.className = 'floor-row';
@@ -398,7 +467,6 @@
             hopGroups[hop].forEach(dev => {
                 const devEl = document.createElement('div');
                 
-                // ★ ここで色付けのクラス（target-node）を付与！
                 let classNames = ['device'];
                 if (dev.isSummary) classNames.push('summary-cloud');
                 else if (targetNodes.has(dev.id)) classNames.push('target-node');
