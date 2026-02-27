@@ -129,6 +129,12 @@
 <datalist id="systemList"></datalist>
 
 <script>
+    // ★ 追加: XSS対策のためのエスケープ関数
+    function esc(str) {
+        if (!str) return "";
+        return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
     const schemas = {
         devices: ['id', 'name', 'role', 'location_id', 'system', 'ports'],
         cables: ['device_a_id', 'port_a', 'device_b_id', 'port_b'],
@@ -280,11 +286,11 @@
     }
 
     function updateDatalists() {
-        const deviceLabels = db.devices.map(d => `<option value="${getDeviceLabel(d)}">`).join('');
+        const deviceLabels = db.devices.map(d => `<option value="${esc(getDeviceLabel(d))}">`).join('');
         document.getElementById('deviceList').innerHTML = deviceLabels;
 
         const systems = [...new Set(db.devices.map(d => d.system).filter(s => s))].sort();
-        document.getElementById('systemList').innerHTML = systems.map(s => `<option value="${s}">`).join('');
+        document.getElementById('systemList').innerHTML = systems.map(s => `<option value="${esc(s)}">`).join('');
     }
 
     window.updatePortDatalist = function(deviceId) {
@@ -292,7 +298,7 @@
         dataList.innerHTML = ''; 
         if (!deviceId) return;
         const dev = db.devices.find(d => d.id === deviceId);
-        if (dev && dev.ports) dataList.innerHTML = dev.ports.map(p => `<option value="${p.name}">`).join('');
+        if (dev && dev.ports) dataList.innerHTML = dev.ports.map(p => `<option value="${esc(p.name)}">`).join('');
     };
 
     window.updateCell = function(index, key, value) {
@@ -375,9 +381,9 @@
         tempPorts.forEach((port, index) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><input type="text" value="${port.name || ''}" placeholder="例: eth1"></td>
-                <td><input type="text" value="${port.ip || ''}" placeholder="192.168.1.1"></td>
-                <td><input type="text" value="${port.mac || ''}" placeholder="00:1A:2B:..."></td>
+                <td><input type="text" value="${esc(port.name || '')}" placeholder="例: eth1"></td>
+                <td><input type="text" value="${esc(port.ip || '')}" placeholder="192.168.1.1"></td>
+                <td><input type="text" value="${esc(port.mac || '')}" placeholder="00:1A:2B:..."></td>
                 <td style="text-align: center;"><button class="btn btn-danger" onclick="removePortRow(${index})">✖</button></td>
             `;
             tbody.appendChild(tr);
@@ -402,11 +408,11 @@
                 const labelB = devB ? getDeviceLabel(devB) : (row.device_b_id ? "⚠️ 削除されたデバイス" : "");
                 tr.innerHTML = `
                     <td style="text-align: center;"><div class="action-wrap"><button class="btn btn-icon" onclick="moveRowUp(${index})" ${index === 0 ? 'disabled' : ''}>⬆️</button><button class="btn btn-icon" onclick="moveRowDown(${index})" ${index === data.length - 1 ? 'disabled' : ''}>⬇️</button></div></td>
-                    <td><input type="text" list="deviceList" class="search-input" value="${labelA}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_a_id', this.value)"></td>
-                    <td><input type="text" list="dynamicPortList" class="search-input" value="${row.port_a || ''}" onfocus="updatePortDatalist('${row.device_a_id || ''}')" onchange="updateCell(${index}, 'port_a', this.value)"></td>
+                    <td><input type="text" list="deviceList" class="search-input" value="${esc(labelA)}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_a_id', this.value)"></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${esc(row.port_a || '')}" onfocus="updatePortDatalist('${esc(row.device_a_id || '')}')" onchange="updateCell(${index}, 'port_a', this.value)"></td>
                     <td style="text-align: center;"><button class="btn btn-swap" onclick="swapCable(${index})">⇄</button></td>
-                    <td><input type="text" list="dynamicPortList" class="search-input" value="${row.port_b || ''}" onfocus="updatePortDatalist('${row.device_b_id || ''}')" onchange="updateCell(${index}, 'port_b', this.value)"></td>
-                    <td><input type="text" list="deviceList" class="search-input" value="${labelB}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_b_id', this.value)"></td>
+                    <td><input type="text" list="dynamicPortList" class="search-input" value="${esc(row.port_b || '')}" onfocus="updatePortDatalist('${esc(row.device_b_id || '')}')" onchange="updateCell(${index}, 'port_b', this.value)"></td>
+                    <td><input type="text" list="deviceList" class="search-input" value="${esc(labelB)}" placeholder="🔍 デバイス名を検索..." onchange="updateCableByLabel(${index}, 'device_b_id', this.value)"></td>
                     <td style="text-align: center;"><button class="btn btn-danger" onclick="deleteRow(${index})">✖</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -417,7 +423,6 @@
         let headerHtml = displayColumns.map(col => {
             let label = col.charAt(0).toUpperCase() + col.slice(1).replace('_id', '');
             
-            // ★ Role のヒントをプルダウンに変更
             if (col === 'role') label += ' <span class="hint-text">(プルダウン選択)</span>';
             if (col === 'system') label += ' <span class="hint-text">(所属システム)</span>';
             if (col === 'location_id' && currentTab === 'devices') label += ' <span class="hint-text">(階層選択)</span>';
@@ -444,20 +449,19 @@
                     const children = lvl1Id ? db.locations.filter(l => l.parent_id === lvl1Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
                     const grandchildren = lvl2Id ? db.locations.filter(l => l.parent_id === lvl2Id).sort((a,b)=>compareFloorPaths(a.name, b.name)) : [];
 
-                    let sel1 = `<select onchange="updateDeviceLoc(${index}, 1, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%"><option value="">- フロア -</option>${roots.map(l => `<option value="${l.id}" ${l.id===lvl1Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
-                    let sel2 = `<select onchange="updateDeviceLoc(${index}, 2, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl1Id?'disabled':''}><option value="">- 部屋 -</option>${children.map(l => `<option value="${l.id}" ${l.id===lvl2Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
-                    let sel3 = `<select onchange="updateDeviceLoc(${index}, 3, this.value, '${lvl1Id}', '${lvl2Id}')" style="width:32%" ${!lvl2Id?'disabled':''}><option value="">- 詳細 -</option>${grandchildren.map(l => `<option value="${l.id}" ${l.id===lvl3Id?'selected':''}>${l.name}</option>`).join('')}</select>`;
+                    let sel1 = `<select onchange="updateDeviceLoc(${index}, 1, this.value, '${esc(lvl1Id)}', '${esc(lvl2Id)}')" style="width:32%"><option value="">- フロア -</option>${roots.map(l => `<option value="${esc(l.id)}" ${l.id===lvl1Id?'selected':''}>${esc(l.name)}</option>`).join('')}</select>`;
+                    let sel2 = `<select onchange="updateDeviceLoc(${index}, 2, this.value, '${esc(lvl1Id)}', '${esc(lvl2Id)}')" style="width:32%" ${!lvl1Id?'disabled':''}><option value="">- 部屋 -</option>${children.map(l => `<option value="${esc(l.id)}" ${l.id===lvl2Id?'selected':''}>${esc(l.name)}</option>`).join('')}</select>`;
+                    let sel3 = `<select onchange="updateDeviceLoc(${index}, 3, this.value, '${esc(lvl1Id)}', '${esc(lvl2Id)}')" style="width:32%" ${!lvl2Id?'disabled':''}><option value="">- 詳細 -</option>${grandchildren.map(l => `<option value="${esc(l.id)}" ${l.id===lvl3Id?'selected':''}>${esc(l.name)}</option>`).join('')}</select>`;
                     td.innerHTML = `<div style="display:flex; gap:4px; min-width:300px;">${sel1}${sel2}${sel3}</div>`;
                 }
                 else if (currentTab === 'locations' && col === 'parent_id') {
                     const validParents = db.locations.filter(l => l.id !== row.id && getLocDepth(l.id) < 2);
-                    const parentOptions = `<option value="">-- なし (最上位) --</option>` + validParents.map(l => `<option value="${l.id}">${"・".repeat(getLocDepth(l.id))} ${l.name}</option>`).join('');
-                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${parentOptions.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
+                    const parentOptions = `<option value="">-- なし (最上位) --</option>` + validParents.map(l => `<option value="${esc(l.id)}">${"・".repeat(getLocDepth(l.id))} ${esc(l.name)}</option>`).join('');
+                    td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)">${parentOptions.replace(`value="${esc(val)}"`, `value="${esc(val)}" selected`)}</select>`;
                 }
                 else if (currentTab === 'locations' && col === 'name') {
-                    td.innerHTML = `<div style="display: flex; align-items: center; padding-left: ${getLocDepth(row.id) * 20}px;">${getLocDepth(row.id) > 0 ? `<span class="tree-dot">・</span>` : ``}<input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;"></div>`;
+                    td.innerHTML = `<div style="display: flex; align-items: center; padding-left: ${getLocDepth(row.id) * 20}px;">${getLocDepth(row.id) > 0 ? `<span class="tree-dot">・</span>` : ``}<input type="text" value="${esc(val)}" onchange="updateCell(${index}, '${col}', this.value)" style="flex-grow: 1;"></div>`;
                 }
-                // ★ Role を厳格なプルダウンに変更
                 else if (currentTab === 'devices' && col === 'role') {
                     const standardRoles = {
                         "🌐 外部・境界 (起点)": ["ONU", "Router", "Gateway", "Firewall"],
@@ -471,27 +475,27 @@
                         optionsHtml += `<optgroup label="${group}">`;
                         roles.forEach(r => {
                             const selected = (val === r) ? "selected" : "";
-                            optionsHtml += `<option value="${r}" ${selected}>${r}</option>`;
+                            optionsHtml += `<option value="${esc(r)}" ${selected}>${esc(r)}</option>`;
                         });
                         optionsHtml += `</optgroup>`;
                     }
                     
                     const isStandard = Object.values(standardRoles).flat().includes(val);
                     if (val && !isStandard) {
-                        optionsHtml += `<optgroup label="⚠️ カスタム (過去データ)"><option value="${val}" selected>${val}</option></optgroup>`;
+                        optionsHtml += `<optgroup label="⚠️ カスタム (過去データ)"><option value="${esc(val)}" selected>${esc(val)}</option></optgroup>`;
                     }
 
                     td.innerHTML = `<select onchange="updateCell(${index}, '${col}', this.value)" style="width: 100%; padding: 6px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc;">${optionsHtml}</select>`;
                 }
                 else if (currentTab === 'devices' && col === 'system') {
-                    td.innerHTML = `<input type="text" list="systemList" class="search-input" value="${val}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Lighting">`;
+                    td.innerHTML = `<input type="text" list="systemList" class="search-input" value="${esc(val)}" onchange="updateCell(${index}, '${col}', this.value)" placeholder="例: Lighting">`;
                 }
                 else if (currentTab === 'devices' && col === 'ports') {
                     const portCount = (row.ports && Array.isArray(row.ports)) ? row.ports.length : 0;
                     td.innerHTML = `<button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.85rem; width:100%;" onclick="openPortModal(${index})">🔌 Ports (${portCount})</button>`;
                 }
                 else {
-                    td.innerHTML = `<input type="text" value="${val}" onchange="updateCell(${index}, '${col}', this.value)">`;
+                    td.innerHTML = `<input type="text" value="${esc(val)}" onchange="updateCell(${index}, '${col}', this.value)">`;
                 }
                 tr.appendChild(td);
             });

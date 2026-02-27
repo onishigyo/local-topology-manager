@@ -130,6 +130,12 @@
 </div>
 
 <script>
+    // ★ 追加: XSS対策のためのエスケープ関数
+    function esc(str) {
+        if (!str) return "";
+        return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
     let db = { locations: [], devices: [], cables: [] };
     let globalAdj = new Map();
     let deviceDistances = new Map();
@@ -139,7 +145,6 @@
 
     function toggleSidebar() { document.getElementById('settings-sidebar').classList.toggle('closed'); }
 
-    // ★ 最新の11種類のRoleに対応したアイコン判定
     function getIcon(role) {
         const r = role || "";
         if (r === "Firewall") return "🛡️"; 
@@ -159,7 +164,6 @@
             const text = await file.text();
             const data = jsyaml.load(text);
             
-            // マイグレーション処理
             if (data.devices) {
                 data.devices = data.devices.map(d => {
                     let sys = d.system || "";
@@ -183,7 +187,6 @@
         }
     });
 
-    // ★ 孤立した島を救済する（複数ルート対応の）絶対距離計算ロジック
     function calculateAbsoluteDistances() {
         deviceDistances.clear();
         globalAdj.clear();
@@ -260,7 +263,7 @@
         
         container.innerHTML = '';
         Array.from(allSystems).sort().forEach(sys => {
-            container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="${sys}" class="tag-checkbox"> ${sys}</label>`;
+            container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="${esc(sys)}" class="tag-checkbox"> ${esc(sys)}</label>`;
         });
         if (hasNoSystem) container.innerHTML += `<label class="tag-checkbox-label"><input type="checkbox" value="__UNTAGGED__" class="tag-checkbox"> <i>(Systemなし)</i></label>`;
     }
@@ -304,7 +307,6 @@
 
         const uniqueMap = new Map(db.devices.map(d => [d.id, d]));
 
-        // ★ 1. ターゲット（主役）となるノードを見つける
         const targetNodes = new Set();
         db.devices.forEach(d => {
             if (!d.system && activeSystems.includes('__UNTAGGED__')) targetNodes.add(d.id);
@@ -313,7 +315,6 @@
 
         if (targetNodes.size === 0) return alert("条件に一致するデバイスがありません。");
 
-        // ★ DAG（有向非巡回グラフ）のためのRole階級判定関数
         function getRoleRank(r) {
             if (!r) return 99;
             if (r === "ONU") return 0;
@@ -328,7 +329,6 @@
             return 99;
         }
 
-        // ★ ノードuがノードvの「親（大元側）」であるかを正確に判定する関数
         function isParent(u, v) {
             const dU = deviceDistances.get(u);
             const dV = deviceDistances.get(v);
@@ -342,7 +342,6 @@
             return false;
         }
 
-        // ★ 2. Smart Trace（すべての親を辿る全経路探索！）
         const requiredNodes = new Set();
         targetNodes.forEach(tId => {
             const upQueue = [tId];
@@ -364,13 +363,11 @@
         const isNoLimit = document.getElementById('noLimitInput').checked;
         const maxDepth = isNoLimit ? 999 : (parseInt(document.getElementById('depthInput').value) || 4);
         
-        // ★ 3. 深度によるフィルタリング
         const visibleNodes = new Set();
         requiredNodes.forEach(id => { 
             if (deviceDistances.get(id) <= maxDepth) visibleNodes.add(id); 
         });
 
-        // ★ 4. 雲マーク（Summary）の集計
         const summaryMap = new Map();
         if (!isNoLimit) {
             targetNodes.forEach(id => {
@@ -413,7 +410,6 @@
             }
         });
 
-        // 描画対象の全デバイスリストを生成
         const renderableDevices = Array.from(visibleNodes).map(id => uniqueMap.get(id)).concat(virtualDevices);
         
         const container = document.getElementById('floor-list');
@@ -453,7 +449,7 @@
         
         const zone = document.createElement('div');
         zone.className = 'floor-zone';
-        zone.innerHTML = `<div class="floor-bg-label">${floorName}</div>`;
+        zone.innerHTML = `<div class="floor-bg-label">${esc(floorName)}</div>`;
 
         const hopGroups = {};
         devices.forEach(dev => {
@@ -480,11 +476,11 @@
                 devEl.setAttribute('data-hop', hop);
                 
                 const icon = dev.isSummary ? '' : getIcon(dev.role);
-                const roleText = dev.isSummary ? '' : `[${dev.role || 'Role未定'}]`;
+                const roleText = dev.isSummary ? '' : `[${esc(dev.role || 'Role未定')}]`;
                 
                 let subLocStr = "";
                 if (!dev.isSummary) {
-                    const sysStr = dev.system ? `<div style="font-size: 0.7rem; color: #10b981; margin-top: 4px; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #d1fae5; font-weight: bold;">⚙️ ${dev.system}</div><br/>` : "";
+                    const sysStr = dev.system ? `<div style="font-size: 0.7rem; color: #10b981; margin-top: 4px; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #d1fae5; font-weight: bold;">⚙️ ${esc(dev.system)}</div><br/>` : "";
                     if (dev.location_id) {
                         const lineage = getLineage(dev.location_id);
                         const subLocs = lineage.slice(1).map(id => {
@@ -492,13 +488,13 @@
                             return l ? l.name : id;
                         });
                         if (subLocs.length > 0 || sysStr) {
-                            subLocStr = `<div style="margin-top:6px;">${sysStr}<div style="font-size: 0.7rem; color: #3b82f6; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #bfdbfe;">📍 ${subLocs.join(' > ') || 'フロア直下'}</div></div>`;
+                            subLocStr = `<div style="margin-top:6px;">${sysStr}<div style="font-size: 0.7rem; color: #3b82f6; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block; border: 1px solid #bfdbfe;">📍 ${esc(subLocs.join(' > ') || 'フロア直下')}</div></div>`;
                         }
                     }
                 }
                 
                 devEl.innerHTML = `
-                    <div class="dev-name">${icon} ${dev.name}</div>
+                    <div class="dev-name">${icon} ${esc(dev.name)}</div>
                     <div class="dev-role">${roleText}</div>
                     ${subLocStr}
                 `;
@@ -635,7 +631,7 @@
             if (!cable.isSummary) path.setAttribute('stroke', strokeColor);
             
             const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-            title.textContent = cable.isSummary ? `[Hidden Devices]` : `[${cable.port_a || 'Port'}] ↔ [${cable.port_b || 'Port'}]`;
+            title.textContent = cable.isSummary ? `[Hidden Devices]` : `[${esc(cable.port_a || 'Port')}] ↔ [${esc(cable.port_b || 'Port')}]`;
             path.appendChild(title);
 
             const dotStart = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
