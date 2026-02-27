@@ -73,7 +73,7 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 </details>
 
 ### ⚠️ Security Notice
-This tool runs entirely in your local browser and does not send data to any external servers. However, to prevent Cross-Site Scripting (XSS) vulnerabilities, **please ensure that you only load YAML files from trusted sources**. Do not import YAML files provided by unknown or untrusted third parties.
+This tool runs locally and does not send data externally by design. However, loading a malicious YAML file could exploit browser mechanics (such as XSS) to steal and transmit your sensitive data. Therefore, please strictly ensure you only use YAML files from trusted sources.
 
 ### 🚀 Quick Start (Local Environment)
 No installation required. Download and run in seconds.
@@ -154,7 +154,7 @@ Viewerで特定のシステム（例：`Lighting`）を選択して描画する�
 </details>
 
 ### ⚠️ セキュリティに関する注意事項 (Security Notice)
-本ツールは完全にローカルのブラウザ上で動作し、機密データが外部サーバーへ送信されることはありません。しかし、ブラウザ上での不正なスクリプト実行（XSS等）を防ぐため、**必ず信頼できる送信元からのYAMLファイルのみを読み込むようにしてください**。出処の不明なYAMLファイルのインポートはお控えください。
+本ツールはローカルで動作し、正規の機能として外部へデータを送信することはありません。しかし、悪意のあるYAMLを読み込んだ場合、ブラウザの仕組み（XSSなど）を悪用され、機密データが外部へ勝手に送信されるリスクがあります。そのため、必ず信頼できる送信元からのYAMLファイルのみを使用してください。
 
 ### 🚀 使い方 (ローカル環境)
 
