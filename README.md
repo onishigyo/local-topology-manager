@@ -72,6 +72,9 @@ In the Editor, locations should be managed using the following 3-tier hierarchy:
 ```
 </details>
 
+### ⚠️ Security Notice
+This tool runs entirely in your local browser and does not send data to any external servers. However, to prevent Cross-Site Scripting (XSS) vulnerabilities, **please ensure that you only load YAML files from trusted sources**. Do not import YAML files provided by unknown or untrusted third parties.
+
 ### 🚀 Quick Start (Local Environment)
 No installation required. Download and run in seconds.
 1. **Clone or Download** this repository.
@@ -149,6 +152,9 @@ Viewerで特定のシステム（例：`Lighting`）を選択して描画する�
 [LAN3] [LAN4] [LAN5] [LAN6] [LAN7] [LAN8]
 ```
 </details>
+
+### ⚠️ セキュリティに関する注意事項 (Security Notice)
+本ツールは完全にローカルのブラウザ上で動作し、機密データが外部サーバーへ送信されることはありません。しかし、ブラウザ上での不正なスクリプト実行（XSS等）を防ぐため、**必ず信頼できる送信元からのYAMLファイルのみを読み込むようにしてください**。出処の不明なYAMLファイルのインポートはお控えください。
 
 ### 🚀 使い方 (ローカル環境)
 
